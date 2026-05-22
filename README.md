@@ -236,14 +236,18 @@ model.fit(features, labels, epochs = 50) match
 
 ## Multi-Input / FunctionalDef
 
-DL4J supports `FunctionalDef` via `Backend.compileGraph()` for `ComputationGraph`.
-
+Both backends support `FunctionalDef` for multi-input, skip-connection, and DAG architectures:
 
 ```scala
-// Export from PyTorch → ONNX, load via DJL
-ZModel.load(Path.of("model.onnx"), engine = "OnnxRuntime")
+val arch = FunctionalDef(
+  inputs  = List("in1", "in2"),
+  layers  = Map("d1" -> Dense(32), "d2" -> Dense(32), "out" -> Output(1)),
+  connections = List(("in1","d1"), ("in2","d2"), ("d1","out"), ("d2","out")),
+  outputs = List("out")
+)
 
-// Or swap to DL4J backend for full ComputationGraph support
+// DL4J: Backend.compileGraph(arch) → ComputationGraph
+// DJL:  Backend.compile(arch)      → LambdaBlock (v0.5.3)
 ```
 
 ---
@@ -348,25 +352,6 @@ the DL4J backend to configure `InputType.convolutional(28, 28, 1)`
 for automatic dimension calculation through the pooling and flatten layers.
 
 ---
-
-## Multi-Input / Graph Models
-
-DL4J supports `FunctionalDef` via `Backend.compileGraph()` for `ComputationGraph` models.
-
-
-```scala
-// Option A: Export from PyTorch → ONNX, load via DJL
-ZModel.load(Path.of("model.onnx"), engine = "OnnxRuntime")
-
-// Option B: Build raw DJL blocks and combine manually
-val block1 = new SequentialBlock().add(LSTM.builder()...)
-val block2 = new SequentialBlock().add(Linear.builder()...)
-// Wire blocks together using custom LambdaBlock or ParallelBlock
-// Then: ZModel.create(combinedBlock, "multi-input")
-
-// Option C: Use DL4J backend for graph models
-// Swap build.sbt: zio-nn-djl → zio-nn-dl4j
-```
 
 ## TensorOps Guide
 
