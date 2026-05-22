@@ -29,7 +29,7 @@ model.close()
 
 ```scala
 // sbt
-libraryDependencies += "dev.zio" %% "zio-nn-djl"  % "0.2.1"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.0"  // or zio-nn-dl4j
 ```
 
 ## Quick Start

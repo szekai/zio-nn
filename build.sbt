@@ -6,7 +6,7 @@ val djlV   = "0.36.0"
 val dl4jV  = "1.0.0-M2.1"
 
 ThisBuild / scalaVersion := scala3
-ThisBuild / organization := "dev.zio"
+ThisBuild / organization := "io.github.szekai"
 ThisBuild / version      := "0.5.0"
 ThisBuild / homepage     := Some(url("https://github.com/szekai/zio-nn"))
 ThisBuild / licenses     := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
@@ -21,7 +21,7 @@ ThisBuild / scmInfo      := Some(ScmInfo(
 
 // Sonatype / Maven Central
 ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
-ThisBuild / sonatypeProfileName    := "dev.zio"
+ThisBuild / sonatypeProfileName    := "io.github.szekai"
 ThisBuild / publishTo              := sonatypePublishToBundle.value
 ThisBuild / pomIncludeRepository   := { _ => false }
 

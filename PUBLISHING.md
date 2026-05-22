@@ -3,7 +3,7 @@
 ## Prerequisites
 
 1. **Sonatype JIRA account**: Sign up at [issues.sonatype.org](https://issues.sonatype.org)
-2. **Claim `dev.zio` group ID**: Create a JIRA ticket requesting `dev.zio` namespace
+2. **Claim `io.github.szekai` group ID**: Create a JIRA ticket requesting `io.github.szekai` namespace
 3. **GPG key**: Generate with `gpg --gen-key`, publish with `gpg --keyserver keyserver.ubuntu.com --send-keys YOUR_KEY_ID`
 
 ## GPG Setup
@@ -75,13 +75,13 @@ After release, dependencies are available at:
 ```scala
 // build.sbt
 libraryDependencies ++= Seq(
-  "dev.zio" %% "zio-nn-core" % "0.5.0",
-  "dev.zio" %% "zio-nn-djl"  % "0.5.0",
-  // or "dev.zio" %% "zio-nn-dl4j" % "0.5.0"
+  "io.github.szekai" %% "zio-nn-core" % "0.5.0",
+  "io.github.szekai" %% "zio-nn-djl"  % "0.5.0",
+  // or "io.github.szekai" %% "zio-nn-dl4j" % "0.5.0"
 )
 ```
 
-Searchable at: https://search.maven.org/artifact/dev.zio/zio-nn-core_3
+Searchable at: https://search.maven.org/artifact/io.github.szekai/zio-nn-core_3
 
 ## CI/CD (GitHub Actions)
 
