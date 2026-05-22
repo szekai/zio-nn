@@ -29,7 +29,7 @@ model.close()
 
 ```scala
 // sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.1"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.2"  // or zio-nn-dl4j
 ```
 
 ## Quick Start
@@ -333,15 +333,20 @@ yield e
 
 Ops: `create`, `create1D`, `createDouble`, `createDouble1D`, `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `toFloatArray`, `toDoubleArray`, `shape`
 
-## Conv2D / CNN (v0.4.0)
+## Conv2D / CNN (v0.5.2)
 
 ```scala
-Sequential(3)(
+Sequential(1)(  // 1 = input channels
   Conv2D(32, (3,3)), MaxPool2D((2,2)),
   Conv2D(64, (3,3)), MaxPool2D((2,2)),
   Flatten, Dense(128, ReLU), Output(10, Softmax)
-).build
+).withConvInput(28, 28, 1)  // height, width, channels
+ .build
 ```
+
+`withConvInput` is required when the first layer is Conv2D — it tells
+the DL4J backend to configure `InputType.convolutional(28, 28, 1)`
+for automatic dimension calculation through the pooling and flatten layers.
 
 ---
 

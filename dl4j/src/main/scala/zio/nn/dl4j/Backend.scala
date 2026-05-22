@@ -3,6 +3,7 @@ package zio.nn.dl4j
 import zio.nn.*
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration
+import org.deeplearning4j.nn.conf.inputs.InputType
 import org.deeplearning4j.nn.conf.layers.{
   DenseLayer, OutputLayer, LSTM => DL4JLSTM,
   BatchNormalization => DL4JBN, DropoutLayer
@@ -40,7 +41,12 @@ object Backend:
     val configured = arch.layers.zipWithIndex.foldLeft(builder) { case (b, (layer, idx)) =>
       b.layer(idx, toDL4JLayer(layer))
     }
-    val model = new MultiLayerNetwork(configured.build())
+    // Set InputType for convolutional models — required for DL4J to
+    // calculate output dimensions through Conv2D → MaxPool2D → Flatten.
+    val withInput = arch.convInput match
+      case Some(ConvInput(h, w, c)) => configured.setInputType(InputType.convolutional(h, w, c))
+      case None                     => configured
+    val model = new MultiLayerNetwork(withInput.build())
     model.init()
     model
 

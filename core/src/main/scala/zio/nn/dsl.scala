@@ -81,15 +81,22 @@ object dsl:
 
   // ═══ Sequential builder ═══
 
-  class SequentialBuilder private[dsl] (inputSize: Int, layers: List[LayerSpec], optimizer: OptimizerDef, seed: Long):
+  class SequentialBuilder private[dsl] (inputSize: Int, layers: List[LayerSpec], optimizer: OptimizerDef, seed: Long, convInput: Option[ConvInput] = None):
     def apply(more: LayerSpec*): SequentialBuilder =
-      new SequentialBuilder(inputSize, layers ++ more, optimizer, seed)
+      new SequentialBuilder(inputSize, layers ++ more, optimizer, seed, convInput)
 
     def withOptimizer(opt: OptimizerDef): SequentialBuilder =
-      new SequentialBuilder(inputSize, layers, opt, seed)
+      new SequentialBuilder(inputSize, layers, opt, seed, convInput)
 
     def withSeed(s: Long): SequentialBuilder =
-      new SequentialBuilder(inputSize, layers, optimizer, s)
+      new SequentialBuilder(inputSize, layers, optimizer, s, convInput)
+
+    /** Set spatial input dimensions for Conv2D models.
+      * Required when the first layer is Conv2D — tells the backend
+      * to configure `InputType.convolutional(height, width, channels)`.
+      */
+    def withConvInput(height: Int, width: Int, channels: Int): SequentialBuilder =
+      new SequentialBuilder(inputSize, layers, optimizer, seed, Some(ConvInput(height, width, channels)))
 
     def build: ModelDef =
       val resolved = layers.foldLeft((inputSize, List.empty[LayerDef])) { case ((nIn, acc), spec) =>
@@ -99,7 +106,7 @@ object dsl:
           case n  => n
         (nextN, acc :+ layer)
       }
-      ModelDef.Sequential(SequentialDef(inputSize, resolved._2, optimizer, seed))
+      ModelDef.Sequential(SequentialDef(inputSize, resolved._2, optimizer, seed, convInput))
 
 
   def Sequential(inputSize: Int): SequentialBuilder =

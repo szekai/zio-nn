@@ -61,13 +61,22 @@ enum OptimizerDef:
 //  Model Definitions
 // ═══════════════════════════════════════════════════════════
 
-/** Sequential model: layers stacked in order. Covers 80% of use cases. */
+/** Sequential model: layers stacked in order. Covers 80% of use cases.
+  *
+  * @param inputSize  input dimension (features for flat, channels for Conv2D)
+  * @param convInput  if first layer is Conv2D, set (height, width, channels)
+  *                   so the backend can configure InputType.convolutional
+  */
 case class SequentialDef(
   inputSize: Int,
   layers: List[LayerDef],
   optimizer: OptimizerDef = OptimizerDef.Adam(),
-  seed: Long = 42L
+  seed: Long = 42L,
+  convInput: Option[ConvInput] = None
 )
+
+/** Spatial input shape for convolutional models. */
+case class ConvInput(height: Int, width: Int, channels: Int)
 
 /** Functional model: named inputs → DAG of layers → named outputs.
   * Use when you need multi-input, skip connections, or branching.
