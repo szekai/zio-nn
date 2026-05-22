@@ -13,11 +13,7 @@ package zio.nn
   *
   * After (DSL):
   * {{{
-  *   Sequential(7)(
-  *     LSTM(64, Tanh),
-  *     Dense(32, ReLU),
-  *     Output(1, MSE)
-  *   )
+  *   Sequential(7)(LSTM(64, Tanh), Dense(32, ReLU), Output(1, MSE))
   * }}}
   */
 object dsl:
@@ -35,6 +31,17 @@ object dsl:
 
   def BatchNorm: LayerSpec = LayerSpec.BatchNorm
   def Dropout(rate: Double): LayerSpec = LayerSpec.Dropout(rate)
+
+  // ═══ Activation / Loss / Optimizer shortcuts ═══
+  val Tanh    = ActivationFn.Tanh
+  val ReLU    = ActivationFn.ReLU
+  val Sigmoid = ActivationFn.Sigmoid
+  val Softmax = ActivationFn.Softmax
+  val MSE  = LossFn.MSE
+  val MAE  = LossFn.MAE
+  def Adam(lr: Double = 0.001)  = OptimizerDef.Adam(lr)
+  def SGD(lr: Double = 0.01)    = OptimizerDef.SGD(lr)
+  def RMSprop(lr: Double = 0.001) = OptimizerDef.RMSprop(lr)
 
   // ═══ Layer spec (intermediate representation) ═══
 
@@ -80,6 +87,7 @@ object dsl:
         (nextN, acc :+ layer)
       }
       ModelDef.Sequential(SequentialDef(inputSize, resolved._2, optimizer, seed))
+
 
   def Sequential(inputSize: Int): SequentialBuilder =
     new SequentialBuilder(inputSize, Nil, OptimizerDef.Adam(), 42L)

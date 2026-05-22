@@ -52,7 +52,7 @@ lazy val dl4j = project
       "dev.zio"             %% "zio-test"               % zioV % Test,
       "dev.zio"             %% "zio-test-sbt"           % zioV % Test
     )
-  )
+    )
 
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
