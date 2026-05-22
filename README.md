@@ -29,7 +29,7 @@ model.close()
 
 ```scala
 // sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.0"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.1"  // or zio-nn-dl4j
 ```
 
 ## Quick Start
@@ -171,7 +171,7 @@ Bridge between unified `Array[Float]` and native types when you need the escape 
 ```scala
 // DJL
 import zio.nn.djl.implicits.*
-given NDManager = NDManager.newBaseManager()
+// NDManager is managed internally by TensorOps and scope.withNDManager
 val nd: NDList = myArrays.toNDList           // unified → native
 val back: Array[Array[Float]] = nd.toFloatArrays  // native → unified
 
@@ -210,15 +210,18 @@ ZIO.scoped {
   yield pred
 }
 
-// DJL TensorOps scope helper (v0.4.1+)
+// DJL TensorOps scope helper (v0.5.0 — optional, for batch operations)
 import zio.nn.scope.withNDManager
 import zio.nn.TensorOps.*
 withNDManager {
   for
-    a <- create(data)
+    a <- createDouble1D(data)   // explicit NDManager lifecycle
     b <- add(a, a)
   yield b
 } // NDManager auto-closed
+
+// Without scope.withNDManager:
+// DJL uses an internal base manager with per-call sub-managers — safe for all workloads.
 ```
 
 ## FitResult (v0.4.1)
@@ -315,16 +318,15 @@ ZIO.scoped {
 }
 ```
 
-## Tensor Operations (v0.4.0)
+## Tensor Operations (v0.5.0)
 
-ZIO-wrapped tensor math for both backends:
+ZIO-wrapped tensor math for both backends — identical API, zero code change when swapping:
 
 ```scala
-// DJL: import zio.nn.djl.tensor.TensorOps.*
-// DL4J: import zio.nn.dl4j.tensor.TensorOps.*
+import zio.nn.TensorOps.*  // resolves to DL4J or DJL backend automatically
 for
-  a <- create(Array(Array(1f,2f), Array(3f,4f)))
-  b <- create(Array(Array(0.5f,0.5f), Array(0.5f,0.5f)))
+  a <- createDouble1D(Array(1.0, 2.0, 3.0))
+  b <- createDouble1D(Array(0.5, 0.5, 0.5))
   c <- add(a, b); d <- matMul(a, b); e <- toDoubleArray(c)
 yield e
 ```

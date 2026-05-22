@@ -7,14 +7,16 @@ import zio.*
 /** ZIO-wrapped tensor math operations for DL4J's INDArray.
   * Direct replacement for zenithfl's Nd4jZIO facade.
   *
-  * Usage:
+  * Signatures match the DJL backend exactly — enabling zero-code-change
+  * backend swap via `import zio.nn.TensorOps.*`.
+  *
+  * Usage (works identically with both DL4J and DJL backends):
   * {{{
-  *   import zio.nn.dl4j.tensor.TensorOps.*
+  *   import zio.nn.TensorOps.*
   *   for
-  *     a <- create(Array(Array(1.0f, 2.0f), Array(3.0f, 4.0f)))
-  *     b <- create(Array(Array(0.5f, 0.5f), Array(0.5f, 0.5f)))
+  *     a <- createDouble1D(Array(1.0, 2.0, 3.0))
+  *     b <- createDouble1D(Array(0.5, 0.5, 0.5))
   *     c <- add(a, b)
-  *     d <- matMul(a, b)
   *     e <- toDoubleArray(c)
   *   yield e
   * }}}

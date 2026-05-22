@@ -2,66 +2,72 @@
 
 ## Quick Start
 
+Identical API for both backends. Swap the JAR, not the code.
+
 ```scala
-// DJL backend
-import zio.nn.TensorOps.*
-given NDManager = NDManager.newBaseManager()
+import zio.nn.TensorOps.*   // resolves to DL4J or DJL backend automatically
 
 val program = for
-  a      <- create(Array(Array(1.0f, 2.0f), Array(3.0f, 4.0f)))
-  b      <- create(Array(Array(0.5f, 0.5f), Array(0.5f, 0.5f)))
-  sum    <- add(a, b)              // element-wise addition
-  diff   <- sub(a, b)              // subtraction
-  prod   <- matMul(a, b)           // matrix multiplication
-  arr    <- toDoubleArray(prod)    // NDArray → Array[Double]
+  a   <- createDouble1D(Array(1.0, 2.0, 3.0, 4.0))
+  b   <- createDouble1D(Array(0.5, 0.5, 0.5, 0.5))
+  sum <- add(a, b)              // element-wise addition
+  m   <- matMul(a, b)           // matrix multiplication
+  arr <- toDoubleArray(m)       // native → Array[Double]
 yield arr
 ```
 
-```scala
-// DL4J backend (same API, different import)
-import zio.nn.TensorOps.*
-// No given NDManager needed for DL4J
+**No `given NDManager` needed** — both backends have identical, implicit-free signatures.
 
-val program = for
-  a   <- createDouble(Array(Array(1.0, 2.0), Array(3.0, 4.0)))
-  b   <- createDouble1D(Array(0.5, 0.5))
-  s   <- sum(a)                       // reduce sum
-  m   <- mean(a)                      // reduce mean
-  d   <- toDoubleArray(m)
-yield d
+## Backend Swap
+
+```scala
+// build.sbt — swap this ONE line:
+libraryDependencies += "dev.zio" %% "zio-nn-dl4j" % "0.5.1"   // DL4J
+libraryDependencies += "dev.zio" %% "zio-nn-djl"  % "0.5.1"   // DJL
 ```
+
+All consumer code remains unchanged. `import zio.nn.TensorOps.*` auto-resolves.
 
 ## All Operations
 
-| Operation | DJL | DL4J | Signature |
-|-----------|-----|------|-----------|
-| `create` | ✅ | ✅ | `Array[Array[Float]] → Task[NDArray \| INDArray]` |
-| `create1D` | ✅ | ✅ | `Array[Float] → Task[...]` |
-| `createDouble` | ✅ | ✅ | `Array[Array[Double]] → Task[...]` |
-| `createDouble1D` | ✅ | ✅ | `Array[Double] → Task[...]` |
-| `add` | ✅ | ✅ | `(a, b) → Task[...]` |
-| `sub` | ✅ | ✅ | `(a, b) → Task[...]` |
-| `mul` | ✅ | ✅ | `(a, b) → Task[...]` |
-| `div` | ✅ | ✅ | `(a, b) → Task[...]` |
-| `matMul` | ✅ | ✅ | `(a, b) → Task[...]` |
-| `dot` | ✅ | ✅ | `(a, b) → Task[...]` |
-| `transpose` | ✅ | ✅ | `a → Task[...]` |
-| `sum` | ✅ | ✅ | `a → Task[...]` |
-| `mean` | ✅ | ✅ | `a → Task[...]` |
-| `neg` | ✅ | ✅ | `a → Task[...]` |
-| `toFloatArray` | ✅ | ✅ | `... → Task[Array[Float]]` |
-| `toDoubleArray` | ✅ | ✅ | `... → Task[Array[Double]]` |
-| `shape` | ✅ | ✅ | `... → Task[Array[Long]]` |
+| Operation | Signature |
+|-----------|-----------|
+| `create` | `Array[Array[Float]] → Task[...]` |
+| `create1D` | `Array[Float] → Task[...]` |
+| `createDouble` | `Array[Array[Double]] → Task[...]` |
+| `createDouble1D` | `Array[Double] → Task[...]` |
+| `add` | `(a, b) → Task[...]` |
+| `sub` | `(a, b) → Task[...]` |
+| `mul` | `(a, b) → Task[...]` |
+| `div` | `(a, b) → Task[...]` |
+| `matMul` | `(a, b) → Task[...]` |
+| `dot` | `(a, b) → Task[...]` |
+| `transpose` | `a → Task[...]` |
+| `sum` | `a → Task[...]` |
+| `mean` | `a → Task[...]` |
+| `neg` | `a → Task[...]` |
+| `toFloatArray` | `... → Task[Array[Float]]` |
+| `toDoubleArray` | `... → Task[Array[Double]]` |
+| `shape` | `... → Task[Array[Long]]` |
 
-## DJL: NDManager required
+## DJL: Advanced NDManager Control
 
-DJL tensor ops need an implicit `NDManager`:
+For batch operations where you want explicit NDManager lifecycle:
 
 ```scala
-import zio.nn.TensorOps.*
-given NDManager = NDManager.newBaseManager()
-// Now create, add, matMul etc. work
+import zio.nn.djl.scope.*
+
+scope.withNDManager {
+  for
+    a <- TensorOps.createDouble1D(data)  // uses scoped manager
+    b <- TensorOps.createDouble1D(more)
+    c <- TensorOps.add(a, b)
+  yield c
+}  // NDManager auto-closed by ZIO Scope
 ```
+
+Without `scope.withNDManager`, DJL uses an internal base manager with
+per-call sub-managers that auto-close — safe for all workloads.
 
 ## Escape Hatch
 
@@ -69,12 +75,12 @@ Need a raw framework operation not in TensorOps?
 
 ```scala
 // DJL: use underlying NDArray directly
-val nd: NDArray = ...
-val result = nd.softmax(0)  // any NDArray method
+val nd: NDArray = ???
+val result = nd.softmax(0)
 
 // DL4J: use INDArray directly
-val ind: INDArray = ...
-val result = ind.reshape(2, 3)  // any INDArray method
+val ind: INDArray = ???
+val result = ind.reshape(2, 3)
 ```
 
 Use `import zio.nn.implicits.*` to convert between unified and native types.
