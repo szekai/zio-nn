@@ -306,3 +306,29 @@ Sequential(3)(
   Flatten, Dense(128, ReLU), Output(10, Softmax)
 ).build
 ```
+
+---
+
+## Multi-Input / Graph Models
+
+DL4J supports `FunctionalDef` via `Backend.compileGraph()` for `ComputationGraph` models.
+
+DJL has no native graph builder. For multi-input architectures on DJL, use one of:
+
+```scala
+// Option A: Export from PyTorch → ONNX, load via DJL
+ZModel.load(Path.of("model.onnx"), engine = "OnnxRuntime")
+
+// Option B: Build raw DJL blocks and combine manually
+val block1 = new SequentialBlock().add(LSTM.builder()...)
+val block2 = new SequentialBlock().add(Linear.builder()...)
+// Wire blocks together using custom LambdaBlock or ParallelBlock
+// Then: ZModel.create(combinedBlock, "multi-input")
+
+// Option C: Use DL4J backend for graph models
+// Swap build.sbt: zio-nn-djl → zio-nn-dl4j
+```
+
+## TensorOps Guide
+
+See [TENSOROPS.md](TENSOROPS.md) for full usage examples and operation reference.
