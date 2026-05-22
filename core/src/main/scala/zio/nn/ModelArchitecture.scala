@@ -86,3 +86,6 @@ case class FunctionalDef(
 enum ModelDef:
   case Sequential(arch: SequentialDef)
   case Functional(arch: FunctionalDef)
+
+/** Result of a fit() call — unified across backends. */
+case class FitResult(loss: Double, epochs: Int)

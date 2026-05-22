@@ -1,6 +1,7 @@
 package zio.nn.dl4j
 
 import zio.*
+import zio.nn.FitResult
 import java.io.File
 
 /** ZIO-native API — Task-based with Scope resource management.
@@ -16,7 +17,7 @@ object zioApi:
     def predictZ(features: Array[Array[Float]]): Task[Array[Float]] =
       ZIO.attemptBlocking(model.predict(features).get)
 
-    def fitZ(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Task[Unit] =
+    def fitZ(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Task[FitResult] =
       ZIO.attemptBlocking(model.fit(features, labels, epochs, lr).get)
 
     def predictDoubleZ(features: Array[Array[Double]]): Task[Array[Double]] =
@@ -25,7 +26,7 @@ object zioApi:
         model.predict(f).get.map(_.toDouble)
       }
 
-    def fitDoubleZ(features: Array[Array[Double]], labels: Array[Double], epochs: Int, lr: Double = 0.001): Task[Unit] =
+    def fitDoubleZ(features: Array[Array[Double]], labels: Array[Double], epochs: Int, lr: Double = 0.001): Task[FitResult] =
       ZIO.attemptBlocking {
         val f = features.map(_.map(_.toFloat))
         val l = labels.map(_.toFloat)

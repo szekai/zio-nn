@@ -19,7 +19,20 @@ object Backend:
 
   def compile(model: ModelDef): MultiLayerNetwork = model match
     case ModelDef.Sequential(arch) => compileSequential(arch)
-    case ModelDef.Functional(_)    => sys.error("FunctionalDef not yet supported for DL4J backend. Use raw DL4J ComputationGraph instead.")
+    case ModelDef.Functional(_)    => sys.error("For FunctionalDef, use Backend.compileGraph() which returns ComputationGraph")
+
+  def compileGraph(arch: FunctionalDef): org.deeplearning4j.nn.graph.ComputationGraph =
+    val builder = new NeuralNetConfiguration.Builder()
+      .seed(arch.seed).weightInit(WeightInit.XAVIER).updater(toDL4J(arch.optimizer))
+      .graphBuilder().addInputs(arch.inputs*)
+    var g = builder
+    for (source, target) <- arch.connections do
+      val layer = arch.layers(target)
+      g = g.addLayer(target, toDL4JLayer(layer), source)
+    g = g.setOutputs(arch.outputs*)
+    val graph = new org.deeplearning4j.nn.graph.ComputationGraph(g.build())
+    graph.init()
+    graph
 
   private def compileSequential(arch: SequentialDef): MultiLayerNetwork =
     val builder = new NeuralNetConfiguration.Builder()

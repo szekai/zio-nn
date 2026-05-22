@@ -27,10 +27,11 @@ class ZModel(val underlying: MultiLayerNetwork):
     }
 
   /** UNIFIED: train from float arrays. Same signature as DJL backend. */
-  def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[Unit] =
+  def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
     Try {
       val ds = new DataSet(Nd4j.create(features), Nd4j.create(labels.map(Array(_))))
       for _ <- 1 to epochs do underlying.fit(ds)
+      FitResult(underlying.score(ds), epochs)
     }
 
   /** ESCAPE HATCH: raw DL4J prediction with INDArray. */

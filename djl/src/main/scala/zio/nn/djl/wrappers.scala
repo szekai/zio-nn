@@ -38,28 +38,22 @@ class ZModel(val underlying: Model, ndm: NDManager):
     finally sub.close()
 
   /** UNIFIED: train from float arrays. Works identically on both backends. */
-  def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[TrainingResult] =
+  def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
     Try {
       val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
       val config = new DefaultTrainingConfig(Loss.l2Loss())
       config.optOptimizer(adam)
       config.optInitializer(new XavierInitializer(), "weight")
-
       val trainer = underlying.newTrainer(config)
       try
         trainer.initialize(new Shape(1, features.head.length.toLong))
         for _ <- 1 to epochs do
-          val dataArr = ndm.create(features)
-          val labelArr = ndm.create(labels.map(Array(_)))
-          val batch = new ai.djl.training.dataset.Batch(
-            ndm.newSubManager(),
-            new NDList(dataArr),
-            new NDList(labelArr),
-            features.length, null, null, features.length.toLong, 0L, java.util.Collections.emptyList[Any]()
-          )
-          ai.djl.training.EasyTrain.trainBatch(trainer, batch)
-          batch.close()
-        trainer.getTrainingResult
+          val dataArr = ndm.create(features); val labelArr = ndm.create(labels.map(Array(_)))
+          val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
+            features.length, null, null, features.length.toLong, 0L, java.util.Collections.emptyList[Any]())
+          ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
+        val loss = trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(loss, epochs)
       finally trainer.close()
     }
 
