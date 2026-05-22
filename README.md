@@ -24,7 +24,7 @@ model.close()
 | Module | Description |
 |--------|-------------|
 | `zio-nn-core` | DSL (`dsl.*`), architecture types (`ModelDef`, `LayerDef`), implicit conversions |
-| `zio-nn-djl` | DJL backend: `ZModel`, `Backend`, PyTorch 2.7.1 engine |
+| `zio-nn-djl` | DJL backend: `ZModel`, `Backend` + PyTorch/ONNX/TF/XGBoost engines |
 | `zio-nn-dl4j` | DL4J backend: `ZModel`, `Backend`, JVM-native (no Python) |
 
 ```scala
@@ -231,6 +231,34 @@ Add a new backend in 3 files:
 1. `Backend.scala` — `ModelDef` → framework Block (~50 lines)
 2. `wrappers.scala` — `ZModel` with `predict()`/`fit()` (~80 lines)
 3. `exports.scala` — `export` into `zio.nn` package (1 line)
+
+---
+
+## ONNX & Other Engines
+
+`zio-nn-djl` supports any DJL engine — just pass the engine name:
+
+```scala
+// PyTorch (default)
+ZModel.create(arch, "m", engine = "PyTorch")
+
+// ONNX Runtime — train in PyTorch/TensorFlow, serve on JVM
+ZModel.load(Path.of("model.onnx"), engine = "OnnxRuntime")
+
+// TensorFlow
+ZModel.load(Path.of("saved_model"), engine = "TensorFlow")
+
+// MXNet, PaddlePaddle, XGBoost, LightGBM
+ZModel.load(path, engine = "MXNet")
+```
+
+**DJL engines:** PyTorch, OnnxRuntime, TensorFlow, MXNet, PaddlePaddle, XGBoost, LightGBM, fastText, SentencePiece.
+
+No additional module needed — add `onnxruntime` to dependencies if using ONNX models:
+
+```scala
+libraryDependencies += "com.microsoft.onnxruntime" % "onnxruntime" % "1.19.2"
+```
 
 ---
 
