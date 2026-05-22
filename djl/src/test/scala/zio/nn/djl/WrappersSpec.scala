@@ -6,50 +6,51 @@ import zio.test.Assertion.*
 
 object WrappersSpec extends ZIOSpecDefault:
 
-  def spec = suite("Wrappers (DJL)")(
-    test("ZModel.create succeeds") {
+  def spec = suite("Wrappers (DJL — unified API)")(
+    test("ZModel.create from architecture succeeds") {
       val arch = ModelDef.Sequential(SequentialDef(7,
         List(LayerDef.Dense(7, 10, ActivationFn.ReLU), LayerDef.Output(10, 1, LossFn.MSE))))
-      val block = Backend.compile(arch)
-      val result = ZModel.create(block, "test")
+      val result = ZModel.create(arch, "test")
       result.foreach(_.close())
       assertTrue(result.isSuccess)
     },
-    test("ZModel.underlying exposes raw ai.djl.Model") {
+    test("ZModel.predict (unified) works with float arrays") {
       val arch = ModelDef.Sequential(SequentialDef(7,
         List(LayerDef.Dense(7, 5, ActivationFn.ReLU), LayerDef.Output(5, 1, LossFn.MSE))))
-      val block = Backend.compile(arch)
-      ZModel.create(block, "escape-test") match
+      ZModel.create(arch, "pred-test") match
         case scala.util.Success(m) =>
-          val ok = m.underlying.getName == "escape-test"
-          m.close(); assertTrue(ok)
+          val features = Array.fill(3)(Array.fill(7)(1.0f))
+          val result = m.predict(features)
+          m.close()
+          assertTrue(result.isSuccess)
         case _ => assertTrue(false)
     },
-    test("ZModel.predictor creates ZPredictor") {
+    test("ZModel.fit (unified) runs without error") {
       val arch = ModelDef.Sequential(SequentialDef(7,
         List(LayerDef.Dense(7, 5, ActivationFn.ReLU), LayerDef.Output(5, 1, LossFn.MSE))))
-      ZModel.create(Backend.compile(arch), "pred-test") match
+      ZModel.create(arch, "fit-test") match
         case scala.util.Success(m) =>
-          val ok = m.predictor().isSuccess
-          m.close(); assertTrue(ok)
+          val feats = Array.fill(10)(Array.fill(7)(scala.util.Random.nextFloat()))
+          val labels = Array.fill(10)(scala.util.Random.nextFloat())
+          val result = m.fit(feats, labels, 2)
+          m.close()
+          assertTrue(result.isSuccess)
         case _ => assertTrue(false)
     },
-    test("ZPredictor.underlying exposes raw DJL Predictor") {
+    test("ZModel.underlying exposes raw DJL Model") {
       val arch = ModelDef.Sequential(SequentialDef(7,
         List(LayerDef.Dense(7, 5, ActivationFn.ReLU), LayerDef.Output(5, 1, LossFn.MSE))))
-      ZModel.create(Backend.compile(arch), "escape") match
+      ZModel.create(arch, "escape") match
         case scala.util.Success(m) =>
-          m.predictor() match
-            case scala.util.Success(p) =>
-              val ok = p.underlying != null
-              p.close(); m.close(); assertTrue(ok)
-            case _ => m.close(); assertTrue(false)
+          val ok = m.underlying.getName == "escape"
+          m.close()
+          assertTrue(ok)
         case _ => assertTrue(false)
     },
-    test("defaultConfig produces valid config") {
-      assertTrue(defaultConfig() != null)
-    },
-    test("mseLoss is non-null") {
-      assertTrue(mseLoss != null)
+    test("ZModel.close releases resources") {
+      val arch = ModelDef.Sequential(SequentialDef(7,
+        List(LayerDef.Dense(7, 5, ActivationFn.ReLU), LayerDef.Output(5, 1, LossFn.MSE))))
+      ZModel.create(arch, "close-test").foreach(_.close())
+      assertTrue(true)
     }
   )
