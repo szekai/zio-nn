@@ -12,8 +12,8 @@ import zio.nn.*
 val model = ZModel.create(arch, "my-model").get
 
 // Predict / Train — same for both backends
-val predictions = model.predict(features).get        // Array[Array[Float]] → Array[Float]
-model.fit(features, labels, epochs = 50)              // same signature
+val predictions = model.predict(features).get      // Array[Array[Float]] → Array[Float]
+model.fit(features, labels, epochs = 50)             // returns FitResult(loss, epochs)
 model.close()
 ```
 
@@ -23,9 +23,9 @@ model.close()
 
 | Module | Description |
 |--------|-------------|
-| `zio-nn-core` | DSL (`dsl.*`), architecture types (`ModelDef`, `LayerDef`), implicit conversions |
-| `zio-nn-djl` | DJL backend: `ZModel`, `Backend` + PyTorch/ONNX/TF/XGBoost engines |
-| `zio-nn-dl4j` | DL4J backend: `ZModel`, `Backend`, JVM-native (no Python) |
+| `zio-nn-core` | DSL (`dsl.*`), types (`ModelDef`, `LayerDef`, `FitResult`), implicit conversions |
+| `zio-nn-djl` | ZModel, Backend, zioApi, TensorOps, scope, implicits — PyTorch/ONNX/TF/XGBoost |
+| `zio-nn-dl4j` | ZModel, Backend, zioApi, TensorOps, implicits — JVM-native (no Python) |
 
 ```scala
 // sbt
@@ -197,17 +197,51 @@ val back: Array[Float] = ind.toFloatArray     // native → unified
 ## Resource Management
 
 ```scala
-// Manual
+// Manual (Try-based)
 val model = ZModel.create(arch, "m").get
 try { /* use model */ } finally model.close()
 
-// ZIO Scope (auto-close)
+// ZIO-native (Scope-based, v0.3.0+)
+import zio.nn.zioApi.*
 ZIO.scoped {
   for
-    model <- ZIO.fromTry(ZModel.create(arch, "m"))
-    pred  <- ZIO.fromTry(model.predict(features))
+    model <- create(arch, "m")           // auto-closed by Scope
+    pred  <- model.predictZ(features)
   yield pred
 }
+
+// DJL TensorOps scope helper (v0.4.1+)
+import zio.nn.scope.withNDManager
+import zio.nn.TensorOps.*
+withNDManager {
+  for
+    a <- create(data)
+    b <- add(a, a)
+  yield b
+} // NDManager auto-closed
+```
+
+## FitResult (v0.4.1)
+
+`model.fit()` returns `Try[FitResult]` across all backends:
+
+```scala
+model.fit(features, labels, epochs = 50) match
+  case Success(FitResult(loss, epochs)) => println(s"Loss: $loss after $epochs epochs")
+  case _ => println("Training failed")
+```
+
+## Multi-Input / FunctionalDef
+
+DL4J supports `FunctionalDef` via `Backend.compileGraph()` for `ComputationGraph`.
+
+DJL has no native graph builder. Use ONNX export or raw blocks:
+
+```scala
+// Export from PyTorch → ONNX, load via DJL
+ZModel.load(Path.of("model.onnx"), engine = "OnnxRuntime")
+
+// Or swap to DL4J backend for full ComputationGraph support
 ```
 
 ---
