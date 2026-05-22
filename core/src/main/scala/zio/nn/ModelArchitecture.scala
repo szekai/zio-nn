@@ -25,20 +25,14 @@ object ModelArchitecture
 // ═══════════════════════════════════════════════════════════
 
 enum LayerDef:
-  /** Long Short-Term Memory recurrent layer. */
   case LSTM(nIn: Int, nOut: Int, activation: ActivationFn = ActivationFn.Tanh, dropout: Double = 0.0)
-
-  /** Fully-connected (dense) layer. */
   case Dense(nIn: Int, nOut: Int, activation: ActivationFn = ActivationFn.ReLU)
-
-  /** Output layer (regression or classification). Loss function specified here. */
   case Output(nIn: Int, nOut: Int, loss: LossFn = LossFn.MSE, activation: ActivationFn = ActivationFn.Identity)
-
-  /** Batch normalization. */
   case BatchNorm(nIn: Int)
-
-  /** Dropout regularization. */
   case Dropout(rate: Double)
+  case Conv2D(nIn: Int, filters: Int, kernel: (Int, Int) = (3, 3), stride: (Int, Int) = (1, 1), activation: ActivationFn = ActivationFn.ReLU)
+  case MaxPool2D(poolSize: (Int, Int) = (2, 2))
+  case Flatten
 
 // ═══════════════════════════════════════════════════════════
 //  Activation Functions

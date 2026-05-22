@@ -31,6 +31,10 @@ object dsl:
 
   def BatchNorm: LayerSpec = LayerSpec.BatchNorm
   def Dropout(rate: Double): LayerSpec = LayerSpec.Dropout(rate)
+  def Conv2D(filters: Int, kernel: (Int, Int) = (3, 3), stride: (Int, Int) = (1, 1), activation: ActivationFn = ActivationFn.ReLU): LayerSpec =
+    LayerSpec.Conv2D(filters, kernel, stride, activation)
+  def MaxPool2D(poolSize: (Int, Int) = (2, 2)): LayerSpec = LayerSpec.MaxPool2D(poolSize)
+  def Flatten: LayerSpec = LayerSpec.Flatten
 
   // ═══ Activation / Loss / Optimizer shortcuts ═══
   val Tanh    = ActivationFn.Tanh
@@ -51,20 +55,29 @@ object dsl:
     case Output(nOut: Int, loss: LossFn, activation: ActivationFn)
     case BatchNorm
     case Dropout(rate: Double)
+    case Conv2D(filters: Int, kernel: (Int, Int), stride: (Int, Int), activation: ActivationFn)
+    case MaxPool2D(poolSize: (Int, Int))
+    case Flatten
 
     def resolve(nIn: Int): LayerDef = this match
-      case LSTM(nOut, act, drop) => LayerDef.LSTM(nIn, nOut, act, drop)
-      case Dense(nOut, act)      => LayerDef.Dense(nIn, nOut, act)
-      case Output(nOut, loss, act) => LayerDef.Output(nIn, nOut, loss, act)
-      case LayerSpec.BatchNorm => LayerDef.BatchNorm(nIn)
-      case Dropout(rate)         => LayerDef.Dropout(rate)
+      case LayerSpec.LSTM(nOut, act, drop) => LayerDef.LSTM(nIn, nOut, act, drop)
+      case LayerSpec.Dense(nOut, act)      => LayerDef.Dense(nIn, nOut, act)
+      case LayerSpec.Output(nOut, loss, act) => LayerDef.Output(nIn, nOut, loss, act)
+      case LayerSpec.BatchNorm             => LayerDef.BatchNorm(nIn)
+      case LayerSpec.Dropout(rate)         => LayerDef.Dropout(rate)
+      case LayerSpec.Conv2D(filters, kernel, stride, act) => LayerDef.Conv2D(nIn, filters, kernel, stride, act)
+      case LayerSpec.MaxPool2D(poolSize)   => LayerDef.MaxPool2D(poolSize)
+      case LayerSpec.Flatten               => LayerDef.Flatten
 
     def outputSize: Int = this match
-      case LSTM(nOut, _, _)  => nOut
-      case Dense(nOut, _)    => nOut
-      case Output(nOut, _, _)=> nOut
-      case LayerSpec.BatchNorm => -1
-      case LayerSpec.Dropout(_) => -1
+      case LayerSpec.LSTM(nOut, _, _)   => nOut
+      case LayerSpec.Dense(nOut, _)     => nOut
+      case LayerSpec.Output(nOut, _, _) => nOut
+      case LayerSpec.BatchNorm          => -1
+      case LayerSpec.Dropout(_)         => -1
+      case LayerSpec.Conv2D(_, _, _, _) => -1
+      case LayerSpec.MaxPool2D(_)       => -1
+      case LayerSpec.Flatten            => -1
 
   // ═══ Sequential builder ═══
 

@@ -265,3 +265,44 @@ libraryDependencies += "com.microsoft.onnxruntime" % "onnxruntime" % "1.19.2"
 ## License
 
 Apache 2.0
+
+---
+
+## ZIO-Native API (v0.3.0)
+
+```scala
+import zio.nn.djl.zioApi.*
+ZIO.scoped {
+  for
+    model <- create(arch, "m")           // ZIO[Scope, Throwable, ZModel]
+    pred  <- model.predictZ(features)    // Task[Array[Float]]
+    // model auto-closed by Scope
+  yield pred
+}
+```
+
+## Tensor Operations (v0.4.0)
+
+ZIO-wrapped tensor math for both backends:
+
+```scala
+// DJL: import zio.nn.djl.tensor.TensorOps.*
+// DL4J: import zio.nn.dl4j.tensor.TensorOps.*
+for
+  a <- create(Array(Array(1f,2f), Array(3f,4f)))
+  b <- create(Array(Array(0.5f,0.5f), Array(0.5f,0.5f)))
+  c <- add(a, b); d <- matMul(a, b); e <- toDoubleArray(c)
+yield e
+```
+
+Ops: `create`, `create1D`, `createDouble`, `createDouble1D`, `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `toFloatArray`, `toDoubleArray`, `shape`
+
+## Conv2D / CNN (v0.4.0)
+
+```scala
+Sequential(3)(
+  Conv2D(32, (3,3)), MaxPool2D((2,2)),
+  Conv2D(64, (3,3)), MaxPool2D((2,2)),
+  Flatten, Dense(128, ReLU), Output(10, Softmax)
+).build
+```

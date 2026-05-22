@@ -39,6 +39,21 @@ object Backend:
 
     case LayerDef.Dropout(_rate) => Blocks.identityBlock()
 
+    case LayerDef.Conv2D(_, filters, kernel, stride, act) =>
+      val conv = ai.djl.nn.convolutional.Conv2d.builder()
+        .setFilters(filters)
+        .setKernelShape(new ai.djl.ndarray.types.Shape(kernel._1, kernel._2))
+        .optStride(new ai.djl.ndarray.types.Shape(stride._1, stride._2))
+        .build()
+      if act == ActivationFn.Identity then conv
+      else new SequentialBlock().add(conv).add(toDJLActivationBlock(act))
+
+    case LayerDef.MaxPool2D(poolSize) =>
+      ai.djl.nn.pooling.Pool.maxPool2dBlock(new ai.djl.ndarray.types.Shape(poolSize._1, poolSize._2))
+
+    case LayerDef.Flatten =>
+      Blocks.batchFlattenBlock()
+
   private def toDJLActivationBlock(act: ActivationFn): Block = act match
     case ActivationFn.Tanh      => DJLActivation.tanhBlock()
     case ActivationFn.ReLU      => DJLActivation.reluBlock()

@@ -48,6 +48,16 @@ object Backend:
     case LayerDef.Dropout(rate) =>
       new DropoutLayer.Builder(rate).build()
 
+    case LayerDef.Conv2D(nIn, filters, kernel, stride, act) =>
+      new org.deeplearning4j.nn.conf.layers.ConvolutionLayer.Builder(kernel._1, kernel._2)
+        .nIn(nIn).nOut(filters).stride(stride._1, stride._2)
+        .activation(toDL4JActivation(act)).build()
+
+    case LayerDef.MaxPool2D(poolSize) =>
+      new org.deeplearning4j.nn.conf.layers.SubsamplingLayer.Builder(
+        org.deeplearning4j.nn.conf.layers.SubsamplingLayer.PoolingType.MAX,
+        Array(poolSize._1, poolSize._2)).build()
+
   private def toDL4JActivation(act: ActivationFn): DL4JActivation = act match
     case ActivationFn.Tanh => DL4JActivation.TANH; case ActivationFn.ReLU => DL4JActivation.RELU
     case ActivationFn.Sigmoid => DL4JActivation.SIGMOID; case ActivationFn.Softmax => DL4JActivation.SOFTMAX
