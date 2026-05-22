@@ -1,5 +1,8 @@
 package zio.nn
 
-// Re-export DL4J wrappers so consumers just write `import zio.nn.*`.
-// When zio-nn-dl4j is on the classpath, these become available globally.
+// Re-export ALL DL4J types — consumers write `import zio.nn.*`.
+// Since only one backend JAR is on classpath, no conflicts.
 export zio.nn.dl4j.{ZModel, ZGraphModel, Backend}
+export zio.nn.dl4j.zioApi
+export zio.nn.dl4j.tensor.TensorOps
+export zio.nn.dl4j.implicits
