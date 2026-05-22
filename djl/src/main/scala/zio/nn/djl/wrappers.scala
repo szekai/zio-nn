@@ -80,6 +80,17 @@ class ZModel(val underlying: Model, ndm: NDManager):
   def save(path: Path): Try[Unit] = Try(underlying.save(path, "model"))
   def close(): Unit = { underlying.close(); ndm.close() }
 
+  def summary: String =
+    val sb = new StringBuilder(s"ZModel[${underlying.getName}]\n")
+    val children = underlying.getBlock.getChildren
+    val it = children.iterator()
+    var idx = 0
+    while it.hasNext do
+      val child = it.next().getValue
+      sb.append(f"  $idx%3d  ${child.getClass.getSimpleName}\n")
+      idx += 1
+    sb.toString
+
 object ZModel:
 
   /** UNIFIED: create a model from architecture. Compiles + instantiates internally. */

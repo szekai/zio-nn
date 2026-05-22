@@ -41,6 +41,13 @@ class ZModel(val underlying: MultiLayerNetwork):
   def save(file: File): Try[Unit] = Try(ModelSerializer.writeModel(underlying, file, false))
   def close(): Unit = underlying.close()
 
+  def summary: String =
+    val sb = new StringBuilder("ZModel[MultiLayerNetwork]\n")
+    val layers = underlying.getLayers
+    for i <- layers.indices do
+      sb.append(f"  $i%3d  ${layers(i).getClass.getSimpleName}\n")
+    sb.toString
+
 object ZModel:
 
   /** UNIFIED: create a model from architecture. Compiles + wraps internally. */
