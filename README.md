@@ -29,7 +29,7 @@ model.close()
 
 ```scala
 // sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.2"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.3"  // or zio-nn-dl4j
 ```
 
 ## Quick Start
@@ -238,7 +238,6 @@ model.fit(features, labels, epochs = 50) match
 
 DL4J supports `FunctionalDef` via `Backend.compileGraph()` for `ComputationGraph`.
 
-DJL has no native graph builder. Use ONNX export or raw blocks:
 
 ```scala
 // Export from PyTorch → ONNX, load via DJL
@@ -333,7 +332,7 @@ yield e
 
 Ops: `create`, `create1D`, `createDouble`, `createDouble1D`, `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `toFloatArray`, `toDoubleArray`, `shape`
 
-## Conv2D / CNN (v0.5.2)
+## Conv2D / CNN (v0.5.3)
 
 ```scala
 Sequential(1)(  // 1 = input channels
@@ -354,7 +353,6 @@ for automatic dimension calculation through the pooling and flatten layers.
 
 DL4J supports `FunctionalDef` via `Backend.compileGraph()` for `ComputationGraph` models.
 
-DJL has no native graph builder. For multi-input architectures on DJL, use one of:
 
 ```scala
 // Option A: Export from PyTorch → ONNX, load via DJL
