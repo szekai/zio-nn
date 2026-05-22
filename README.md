@@ -246,6 +246,46 @@ ZIO.scoped {
 
 ---
 
+## Implicit Conversions (Escape Hatch Bridge)
+
+Need to use a raw framework object after a unified `predict()` call? Import the implicit conversions:
+
+```scala
+// DJL
+import zio.nn.djl.implicits.*
+given NDManager = NDManager.newBaseManager()
+
+val result: Array[Float] = model.predict(features).get
+val ndlist: NDList = Array(result).toNDList   // ← unified → native
+val rawPred = model.predictRaw(ndlist)        // ← use native
+val floats: Array[Array[Float]] = rawPred.get.toFloatArrays  // ← native → unified
+
+// DL4J
+import zio.nn.dl4j.implicits.*
+
+val result: Array[Float] = model.predict(features).get
+val ind: INDArray = result.toINDArray          // ← unified → native
+val rawPred = model.predictRaw(ind)            // ← use native
+val floats: Array[Float] = rawPred.get.toFloatArray  // ← native → unified
+```
+
+**Available conversions:**
+
+| Source | Method | Target | Backend |
+|--------|--------|--------|---------|
+| `Array[Array[Float]]` | `.toNDList` | `NDList` | DJL |
+| `Array[Float]` | `.toNDArray` | `NDArray` | DJL |
+| `NDList` | `.toFloatArrays` | `Array[Array[Float]]` | DJL |
+| `NDArray` | `.toFloatArray` | `Array[Float]` | DJL |
+| `Array[Array[Float]]` | `.toINDArray` | `INDArray` | DL4J |
+| `Array[Float]` | `.toINDArray` | `INDArray` | DL4J |
+| `INDArray` | `.toFloatArrays` | `Array[Array[Float]]` | DL4J |
+| `INDArray` | `.toFloatArray` | `Array[Float]` | DL4J |
+
+**Pattern:** Use unified API for 80% of work. Drop to native with `.underlying` or implicits when you need framework-specific features (multi-GPU, Spark, custom layers).
+
+---
+
 ## Contributing
 
 Add a new backend in 3 steps:

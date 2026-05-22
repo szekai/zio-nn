@@ -7,7 +7,7 @@ val dl4jV  = "1.0.0-M2.1"
 
 ThisBuild / scalaVersion := scala3
 ThisBuild / organization := "dev.zio"
-ThisBuild / version      := "0.2.0-SNAPSHOT"
+ThisBuild / version      := "0.2.1-SNAPSHOT"
 ThisBuild / homepage     := Some(url("https://github.com/zio/zio-nn"))
 ThisBuild / licenses     := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / developers   := List(Developer("szekai", "Sze Kai", "", url("https://github.com/szekai")))
