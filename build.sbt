@@ -7,10 +7,26 @@ val dl4jV  = "1.0.0-M2.1"
 
 ThisBuild / scalaVersion := scala3
 ThisBuild / organization := "dev.zio"
-ThisBuild / version      := "0.4.1-SNAPSHOT"
-ThisBuild / homepage     := Some(url("https://github.com/zio/zio-nn"))
+ThisBuild / version      := "0.5.0"
+ThisBuild / homepage     := Some(url("https://github.com/szekai/zio-nn"))
 ThisBuild / licenses     := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
-ThisBuild / developers   := List(Developer("szekai", "Sze Kai", "", url("https://github.com/szekai")))
+ThisBuild / developers   := List(
+  Developer("szekai", "Sze Kai", "szekai@users.noreply.github.com", url("https://github.com/szekai"))
+)
+ThisBuild / scmInfo      := Some(ScmInfo(
+  url("https://github.com/szekai/zio-nn"),
+  "scm:git:https://github.com/szekai/zio-nn.git",
+  "scm:git:git@github.com:szekai/zio-nn.git"
+))
+
+// Sonatype / Maven Central
+ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
+ThisBuild / sonatypeProfileName    := "dev.zio"
+ThisBuild / publishTo              := sonatypePublishToBundle.value
+ThisBuild / pomIncludeRepository   := { _ => false }
+
+// Disable publishing for root aggregate
+publish / skip := true
 
 // ── Core: framework-agnostic architecture DSL ──────────
 lazy val core = project
