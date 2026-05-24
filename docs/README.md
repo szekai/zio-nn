@@ -11,7 +11,7 @@
 ## Install
 
 ```scala
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.0"
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.1"
 ```
 
 ## Quick Start
@@ -52,8 +52,8 @@ dataStream.via(model.fitFlow(epochs = 1)).runDrain
 ## Backend Swap
 
 ```scala
-"io.github.szekai" %% "zio-nn-djl"  % "0.7.0"  // ← swap
-"io.github.szekai" %% "zio-nn-dl4j" % "0.7.0"  // ← zero code changes
+"io.github.szekai" %% "zio-nn-djl"  % "0.7.1"  // ← swap
+"io.github.szekai" %% "zio-nn-dl4j" % "0.7.1"  // ← zero code changes
 ```
 
 ## Features
