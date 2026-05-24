@@ -423,3 +423,35 @@ model.fitWithCheckpoints(
 val predictions = model.predictZ(features) @@
   Metric.timer("predict_ms").tagged("model", "lstm-v2")
 ```
+
+---
+
+## ZIO Config (v0.7.1)
+
+Define model architectures in HOCON/YAML — swap without recompiling:
+
+```hocon
+# application.conf
+model {
+  sequential {
+    input-size = 7
+    layers = [
+      { lstm: { n-in = 7, n-out = 64, activation = tanh } }
+      { dense: { n-in = 64, n-out = 32, activation = relu } }
+      { output: { n-in = 32, n-out = 1, loss = mse } }
+    ]
+    optimizer = { adam: { learning-rate = 0.001 } }
+    seed = 42
+  }
+}
+```
+
+```scala
+// Load from config — zero hardcoded architectures
+import zio.nn.ConfigLoader
+
+val arch: Task[ModelDef] = ConfigLoader.fromHocon("model")
+arch.flatMap(a => ZModel.create(a, "from-config"))
+```
+
+**Benefits:** A/B test architectures without recompilation. Analysts edit HOCON, not Scala.

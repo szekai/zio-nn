@@ -6,7 +6,7 @@
 
 <span class="badge">Scala 3.8.3</span>
 <span class="badge">ZIO 2.1</span>
-<span class="badge">v0.7.0</span>
+<span class="badge">v0.7.1</span>
 
 ## Install
 
@@ -67,7 +67,7 @@ dataStream.via(model.fitFlow(epochs = 1)).runDrain
 | TensorOps (17 ops) | ✅ | ✅ | v0.4.0 |
 | ZIO-native API | ✅ | ✅ | v0.3.0 |
 | ZIO Stream (predictFlow, fitFlow) | ✅ | ✅ | v0.6.0 |
-| Metrics + Checkpointing | ✅ | ✅ | v0.7.0 |
+| Metrics + Checkpointing | ✅ | ✅ | v0.7.1 |
 | Implicit conversions | ✅ | ✅ | v0.2.1 |
 | `withNDManager` scope | ✅ | N/A | v0.4.1 |
 | ONNX / TF / XGBoost engines | ✅ via DJL | N/A | v0.1.0 |
@@ -87,7 +87,7 @@ dataStream.via(model.fitFlow(epochs = 1)).runDrain
 - [TensorOps Guide](https://github.com/szekai/zio-nn/blob/main/TENSOROPS.md) — tensor operations
 - [Publishing Guide](https://github.com/szekai/zio-nn/blob/main/PUBLISHING.md) — Maven Central
 
-## Metrics & Checkpointing (v0.7.0)
+## Metrics & Checkpointing (v0.7.1)
 
 ```scala
 // Timed — logs duration at DEBUG/INFO level

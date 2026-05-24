@@ -7,7 +7,7 @@ val dl4jV  = "1.0.0-M2.1"
 
 ThisBuild / scalaVersion := scala3
 ThisBuild / organization := "io.github.szekai"
-ThisBuild / version      := "0.7.0"
+ThisBuild / version      := "0.7.1"
 ThisBuild / homepage     := Some(url("https://github.com/szekai/zio-nn"))
 ThisBuild / licenses     := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / developers   := List(
@@ -35,6 +35,9 @@ lazy val core = project
     name := "zio-nn-core",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio"     % zioV,
+      "dev.zio" %% "zio-config"          % "4.0.4",
+      "dev.zio" %% "zio-config-typesafe" % "4.0.4",
+      "dev.zio" %% "zio-config-magnolia" % "4.0.4",
       "dev.zio" %% "zio-test" % zioV % Test,
       "dev.zio" %% "zio-test-sbt" % zioV % Test
     )
