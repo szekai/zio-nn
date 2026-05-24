@@ -4,38 +4,15 @@
 
 **Write once, run on any JVM deep learning framework. Swap the JAR, not the code.**
 
-```scala
-// Define architecture — same for both backends
-import zio.nn.dsl.*
-val arch = Sequential(7)(LSTM(64, Tanh), Dense(32, ReLU), Output(1, MSE)).build
-
-// Create model — same for both backends
-import zio.nn.*
-val model = ZModel.create(arch, "my-model").get
-
-// Predict / Train — same for both backends
-val predictions = model.predict(features).get      // Array[Array[Float]] → Array[Float]
-model.fit(features, labels, epochs = 50)            // returns FitResult(loss, epochs)
-model.close()
-```
-
-**Swap DJL ↔ DL4J by changing one line in `build.sbt` — zero code changes.**
+<span class="badge">Scala 3.8.3</span>
+<span class="badge">ZIO 2.1</span>
+<span class="badge">v0.6.0</span>
 
 ## Install
 
 ```scala
-// build.sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.4"
-// or: libraryDependencies += "io.github.szekai" %% "zio-nn-dl4j" % "0.5.4"
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.6.0"
 ```
-
-## Modules
-
-| Module | Description | Tests |
-|--------|-------------|-------|
-| `zio-nn-core` | DSL + architecture types + implicits | 22 ✓ |
-| `zio-nn-djl` | PyTorch / ONNX / TF / XGBoost engines | 6 ✓ |
-| `zio-nn-dl4j` | JVM-native — no Python deps | 22 ✓ |
 
 ## Quick Start
 
@@ -45,35 +22,66 @@ import zio.nn.*
 
 val arch = Sequential(7)(LSTM(64, Tanh), Dense(32, ReLU), Output(1, MSE)).build
 val model = ZModel.create(arch, "my-model").get
-model.fit(features, labels, epochs = 50)
 val pred = model.predict(features).get
+model.fit(features, labels, epochs = 50)
 model.close()
+```
+
+## ZIO-Native
+
+```scala
+import zio.nn.zioApi.*
+ZIO.scoped {
+  for
+    model <- create(arch, "model")
+    pred  <- model.predictZ(features)
+  yield pred
+}
+```
+
+## ZIO Stream
+
+```scala
+import zio.stream.*
+// Live predictions from stream
+priceStream.via(model.predictFlow).runCollect
+// Online training from stream
+dataStream.via(model.fitFlow(epochs = 1)).runDrain
 ```
 
 ## Backend Swap
 
 ```scala
-"io.github.szekai" %% "zio-nn-djl"  % "0.5.4"  // ← swap this
-"io.github.szekai" %% "zio-nn-dl4j" % "0.5.4"  // ← to this
+"io.github.szekai" %% "zio-nn-djl"  % "0.6.0"  // ← swap
+"io.github.szekai" %% "zio-nn-dl4j" % "0.6.0"  // ← zero code changes
 ```
 
 ## Features
 
-| Feature | DJL | DL4J |
-|---------|-----|------|
-| `ZModel.create/predict/fit` | ✅ | ✅ |
-| LSTM / Dense / Output | ✅ | ✅ |
-| Conv2D / MaxPool2D / Flatten | ✅ | ✅ |
-| TensorOps (17 ops) | ✅ | ✅ |
-| ZIO-native API (zioApi) | ✅ | ✅ |
-| Implicit conversions | ✅ | ✅ |
-| Save / Load | ✅ | ✅ |
-| FunctionalDef (DAG) | ✅ | ✅ |
-| Multi-GPU / Spark | escape hatch | escape hatch |
+| Feature | DJL | DL4J | Since |
+|---------|-----|------|-------|
+| `ZModel.create/predict/fit` | ✅ | ✅ | v0.1.0 |
+| Architecture DSL | ✅ | ✅ | v0.1.0 |
+| Conv2D / MaxPool2D / Flatten | ✅ | ✅ | v0.4.0 |
+| FunctionalDef (DAG) | ✅ | ✅ | v0.5.3 |
+| TensorOps (17 ops) | ✅ | ✅ | v0.4.0 |
+| ZIO-native API | ✅ | ✅ | v0.3.0 |
+| ZIO Stream (predictFlow, fitFlow) | ✅ | ✅ | v0.6.0 |
+| Implicit conversions | ✅ | ✅ | v0.2.1 |
+| `withNDManager` scope | ✅ | N/A | v0.4.1 |
+| ONNX / TF / XGBoost engines | ✅ via DJL | N/A | v0.1.0 |
+
+## Modules
+
+| Module | Description | Tests |
+|--------|-------------|-------|
+| `zio-nn-core` | DSL + architecture types + implicits | 22 ✓ |
+| `zio-nn-djl` | PyTorch / ONNX / TF / XGBoost + Stream | 6 ✓ |
+| `zio-nn-dl4j` | JVM-native (no Python) + Stream | 22 ✓ |
 
 ## Links
 
-- [GitHub](https://github.com/szekai/zio-nn)
-- [Full README](https://github.com/szekai/zio-nn/blob/main/README.md)
-- [TensorOps Guide](https://github.com/szekai/zio-nn/blob/main/TENSOROPS.md)
-- [Publishing Guide](https://github.com/szekai/zio-nn/blob/main/PUBLISHING.md)
+- [GitHub](https://github.com/szekai/zio-nn) — source code
+- [Full README](https://github.com/szekai/zio-nn/blob/main/README.md) — complete docs
+- [TensorOps Guide](https://github.com/szekai/zio-nn/blob/main/TENSOROPS.md) — tensor operations
+- [Publishing Guide](https://github.com/szekai/zio-nn/blob/main/PUBLISHING.md) — Maven Central
