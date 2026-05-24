@@ -392,3 +392,34 @@ ZIO.scoped {
 |--------|-----|-----|----------|
 | `predictFlow` | `ZStream[... Array[Array[Float]]]` | `ZStream[... Array[Float]]` | Live prediction |
 | `fitFlow` | `ZStream[... (Array[Array[Float]], Array[Float])]` | `ZStream[... FitResult]` | Online training |
+
+---
+
+## Metrics & Checkpointing (v0.7.0)
+
+Timed predictions and training with auto-logging:
+
+```scala
+import zio.nn.zioApi.*
+
+// Timed prediction — logs duration at DEBUG level
+model.predictTimed(features)
+
+// Timed training — logs duration + loss at INFO level
+model.fitTimed(features, labels, epochs = 50)
+
+// Training with periodic checkpoints
+model.fitWithCheckpoints(
+  features, labels,
+  epochs = 100, saveEvery = 10,
+  checkpointPath = "models/lstm"
+)
+// Saves: models/lstm-epoch10, models/lstm-epoch20, ...
+```
+
+**Adding Prometheus:** Use `zio-metrics-connectors` + `@@ Metric.timer(...)` for full observability:
+
+```scala
+val predictions = model.predictZ(features) @@
+  Metric.timer("predict_ms").tagged("model", "lstm-v2")
+```
