@@ -101,3 +101,27 @@ model.fitWithCheckpoints(
 )
 // Saves: models/lstm-epoch10, models/lstm-epoch20, ...
 ```
+
+## ZIO Config (v0.7.1)
+
+Define architectures in HOCON — swap without recompiling:
+
+```hocon
+# application.conf
+model {
+  sequential {
+    input-size = 7
+    layers = [
+      { lstm: { n-in = 7, n-out = 64, activation = tanh } }
+      { dense: { n-in = 64, n-out = 32, activation = relu } }
+      { output: { n-in = 32, n-out = 1, loss = mse } }
+    ]
+    optimizer = { adam: { learning-rate = 0.001 } }
+  }
+}
+```
+
+```scala
+import zio.nn.ConfigLoader
+val arch = ConfigLoader.fromHocon("model")
+```
