@@ -11,7 +11,7 @@
 ## Install
 
 ```scala
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.6.0"
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.0"
 ```
 
 ## Quick Start
@@ -52,8 +52,8 @@ dataStream.via(model.fitFlow(epochs = 1)).runDrain
 ## Backend Swap
 
 ```scala
-"io.github.szekai" %% "zio-nn-djl"  % "0.6.0"  // ← swap
-"io.github.szekai" %% "zio-nn-dl4j" % "0.6.0"  // ← zero code changes
+"io.github.szekai" %% "zio-nn-djl"  % "0.7.0"  // ← swap
+"io.github.szekai" %% "zio-nn-dl4j" % "0.7.0"  // ← zero code changes
 ```
 
 ## Features
@@ -66,7 +66,8 @@ dataStream.via(model.fitFlow(epochs = 1)).runDrain
 | FunctionalDef (DAG) | ✅ | ✅ | v0.5.3 |
 | TensorOps (17 ops) | ✅ | ✅ | v0.4.0 |
 | ZIO-native API | ✅ | ✅ | v0.3.0 |
-| ZIO Stream (predictFlow, fitFlow) | ✅ | ✅ | v0.7.0 |
+| ZIO Stream (predictFlow, fitFlow) | ✅ | ✅ | v0.6.0 |
+| Metrics + Checkpointing | ✅ | ✅ | v0.7.0 |
 | Implicit conversions | ✅ | ✅ | v0.2.1 |
 | `withNDManager` scope | ✅ | N/A | v0.4.1 |
 | ONNX / TF / XGBoost engines | ✅ via DJL | N/A | v0.1.0 |
@@ -85,3 +86,18 @@ dataStream.via(model.fitFlow(epochs = 1)).runDrain
 - [Full README](https://github.com/szekai/zio-nn/blob/main/README.md) — complete docs
 - [TensorOps Guide](https://github.com/szekai/zio-nn/blob/main/TENSOROPS.md) — tensor operations
 - [Publishing Guide](https://github.com/szekai/zio-nn/blob/main/PUBLISHING.md) — Maven Central
+
+## Metrics & Checkpointing (v0.7.0)
+
+```scala
+// Timed — logs duration at DEBUG/INFO level
+model.predictTimed(features)
+model.fitTimed(features, labels, epochs = 50)
+
+// Training with periodic checkpoints
+model.fitWithCheckpoints(
+  features, labels, epochs = 100, saveEvery = 10,
+  checkpointPath = "models/lstm"
+)
+// Saves: models/lstm-epoch10, models/lstm-epoch20, ...
+```
