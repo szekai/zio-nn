@@ -23,13 +23,13 @@ model.close()
 
 | Module | Description |
 |--------|-------------|
-| `zio-nn-core` | DSL (`dsl.*`), types (`ModelDef`, `LayerDef`, `FitResult`), implicit conversions |
+| `zio-nn-core` | DSL (`dsl.*`), types (`ModelDef`, `LayerDef`, `FitResult`), ConfigLoader, implicits |
 | `zio-nn-djl` | ZModel, Backend, zioApi, TensorOps, scope, implicits — PyTorch/ONNX/TF/XGBoost |
 | `zio-nn-dl4j` | ZModel, Backend, zioApi, TensorOps, implicits — JVM-native (no Python) |
 
 ```scala
 // sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.5.3"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.1"  // or zio-nn-dl4j
 ```
 
 ## Quick Start
@@ -210,7 +210,7 @@ ZIO.scoped {
   yield pred
 }
 
-// DJL TensorOps scope helper (v0.5.0 — optional, for batch operations)
+// DJL TensorOps scope helper (v0.4.1)
 import zio.nn.scope.withNDManager
 import zio.nn.TensorOps.*
 withNDManager {
