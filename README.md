@@ -356,3 +356,39 @@ for automatic dimension calculation through the pooling and flatten layers.
 ## TensorOps Guide
 
 See [TENSOROPS.md](TENSOROPS.md) for full usage examples and operation reference.
+
+---
+
+## ZIO Stream Integration (v0.6.0)
+
+Streaming prediction and online training via ZIO Stream:
+
+```scala
+import zio.nn.zioApi.*
+import zio.stream.*
+
+ZIO.scoped {
+  create(arch, "stream-model").flatMap { model =>
+
+    // Streaming prediction — each chunk predicted immediately
+    val predictions: ZStream[Any, Throwable, Array[Float]] =
+      featureStream.via(model.predictFlow)
+
+    // Streaming training — online SGD from infinite stream
+    val losses: ZStream[Any, Throwable, FitResult] =
+      dataStream.via(model.fitFlow(epochs = 1, lr = 0.001f))
+
+    // Use case: real-time signals from WebSocket
+    priceStream
+      .grouped(32)               // mini-batches of 32
+      .via(model.predictFlow)    // stream predictions
+      .map(preds => if preds.head > threshold) Action.Buy else Action.Hold)
+      .runCollect
+  }
+}
+```
+
+| Method | In | Out | Use case |
+|--------|-----|-----|----------|
+| `predictFlow` | `ZStream[... Array[Array[Float]]]` | `ZStream[... Array[Float]]` | Live prediction |
+| `fitFlow` | `ZStream[... (Array[Array[Float]], Array[Float])]` | `ZStream[... FitResult]` | Online training |

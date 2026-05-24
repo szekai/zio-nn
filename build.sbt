@@ -48,6 +48,7 @@ lazy val djl = project
     name := "zio-nn-djl",
     libraryDependencies ++= Seq(
       "dev.zio"           %% "zio"             % zioV,
+      "dev.zio"           %% "zio-streams"     % zioV,
       "ai.djl"             % "api"             % djlV,
       "ai.djl.pytorch"     % "pytorch-engine"  % djlV,
       "dev.zio"           %% "zio-test"        % zioV % Test,
@@ -63,6 +64,7 @@ lazy val dl4j = project
     name := "zio-nn-dl4j",
     libraryDependencies ++= Seq(
       "dev.zio"             %% "zio"                    % zioV,
+      "dev.zio"             %% "zio-streams"            % zioV,
       "org.deeplearning4j"   % "deeplearning4j-core"    % dl4jV,
       "org.nd4j"             % "nd4j-native-platform"   % dl4jV,
       "dev.zio"             %% "zio-test"               % zioV % Test,
