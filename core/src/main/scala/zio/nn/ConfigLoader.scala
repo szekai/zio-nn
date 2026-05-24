@@ -39,12 +39,57 @@ object ConfigLoader:
       config   <- provider.nested(path).load(deriveConfig[ModelDef])
     yield config
 
+  /** Load ModelDef + TrainingParams from HOCON.
+    * Parses architecture AND training parameters in one call.
+    * Use when you need epochs, learningRate, batchSize alongside architecture.
+    *
+    * Example HOCON:
+    *   federated.nn {
+    *     sequential { input-size = 30, layers = [...], optimizer = { adam: { learning-rate = 0.001 } } }
+    *     training { epochs = 100, learning-rate = 0.01, batch-size = 32 }
+    *   }
+    */
+  def fromHoconWithTraining(path: String): Task[(ModelDef, Option[TrainingParams])] =
+    for
+      provider <- ZIO.attempt(ConfigProvider.fromHoconFilePath("application.conf"))
+      model    <- provider.nested(path).load(deriveConfig[ModelDef])
+      training <- ZIO.attempt {
+        val conf = com.typesafe.config.ConfigFactory.load().getConfig(path)
+        if conf.hasPath("training") then
+          val t = conf.getConfig("training")
+          Some(TrainingParams(
+            epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
+            learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
+            batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32
+          ))
+        else None
+      }.catchAll(_ => ZIO.none)
+    yield (model, training)
+
   /** Load from an explicit HOCON string. Useful for testing or inline config. */
   def fromString(hocon: String, path: String = "model"): Task[ModelDef] =
     for
       provider <- ZIO.attempt(ConfigProvider.fromHoconString(hocon))
       config   <- provider.nested(path).load(deriveConfig[ModelDef])
     yield config
+
+  /** Load ModelDef + TrainingParams from HOCON string. */
+  def fromStringWithTraining(hocon: String, path: String = "model"): Task[(ModelDef, Option[TrainingParams])] =
+    for
+      provider <- ZIO.attempt(ConfigProvider.fromHoconString(hocon))
+      model    <- provider.nested(path).load(deriveConfig[ModelDef])
+      training <- ZIO.attempt {
+        val conf = com.typesafe.config.ConfigFactory.parseString(hocon).resolve().getConfig(path)
+        if conf.hasPath("training") then
+          val t = conf.getConfig("training")
+          Some(TrainingParams(
+            epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
+            learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
+            batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32
+          ))
+        else None
+      }.catchAll(_ => ZIO.none)
+    yield (model, training)
 
   /** Generate the default HOCON template for the default LSTM architecture. */
   def defaultHocon: String =
@@ -59,4 +104,5 @@ object ConfigLoader:
       |    optimizer = { adam: { learning-rate = 0.001 } }
       |    seed = 42
       |  }
+      |  training { epochs = 100, learning-rate = 0.01, batch-size = 32 }
       |}""".stripMargin

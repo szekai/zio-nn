@@ -98,3 +98,12 @@ enum ModelDef:
 
 /** Result of a fit() call — unified across backends. */
 case class FitResult(loss: Double, epochs: Int)
+
+/** Training parameters — loaded from config alongside architecture.
+  * Use with ConfigLoader.fromHoconWithTraining().
+  */
+case class TrainingParams(
+  epochs: Int = 100,
+  learningRate: Double = 0.01,
+  batchSize: Int = 32
+)
