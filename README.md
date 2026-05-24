@@ -21,6 +21,8 @@ model.close()
 
 **Swap DJL ↔ DL4J by changing one line in `build.sbt` — zero code changes.**
 
+📖 **[User Guide →](USER_GUIDE.md)** — architecture, DSL reference, escape hatches, backend swap guide.
+
 ## Modules
 
 | Module | Description |
