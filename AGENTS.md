@@ -55,6 +55,21 @@ When a feature truly cannot be implemented in one backend:
 
 **Anti-example**: Saying "DJL Embedding has no builder, use escape hatch" — we found `IdEmbedding` with a public builder. Always exhaust the API before giving up.
 
+### 3. Semantic Versioning (SemVer) — `MAJOR.MINOR.PATCH`
+
+Pre-1.0 (`0.y.z`) follows standard semver conventions:
+- **MAJOR (y)**: New module, new LayerDef variants, DSL-breaking changes, API signature changes
+- **MINOR (z)**: Bug fixes, doc-only changes, non-breaking internal refactors
+- **PATCH**: Not used pre-1.0 (everything is y.z)
+
+**Version bump checklist**:
+- Adding a new `LayerDef` or `AdvancedLayerDef` variant → bump MAJOR (y)
+- Adding a new top-level module (e.g., `embeddings/`) → bump MAJOR (y)
+- Changing any existing method signature → bump MAJOR (y)
+- Docs-only, test fixes, internal refactors → bump MINOR (z)
+
+Post-1.0, standard semver applies: MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
+
 ## Boundary Rules
 
 - **Never** add framework-specific code to `core/`. It must stay backend-agnostic.
