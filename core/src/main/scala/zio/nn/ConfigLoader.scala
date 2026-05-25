@@ -1,15 +1,76 @@
 package zio.nn
 import zio.*
+import scala.jdk.CollectionConverters.*
 
 object ConfigLoader:
+  private def parseLayer(conf: com.typesafe.config.Config): LayerDef =
+    conf.getString("type") match
+      case "lstm" => LayerDef.LSTM(-1,
+        conf.getInt("n-out"),
+        ActivationFn.valueOf(conf.getString("activation").capitalize),
+        if conf.hasPath("dropout") then conf.getDouble("dropout") else 0.0)
+      case "dense" => LayerDef.Dense(-1,
+        conf.getInt("n-out"),
+        ActivationFn.valueOf(conf.getString("activation").capitalize))
+      case "output" => LayerDef.Output(-1,
+        conf.getInt("n-out"),
+        if conf.hasPath("loss") then LossFn.valueOf(conf.getString("loss")) else LossFn.MSE,
+        if conf.hasPath("activation") then ActivationFn.valueOf(conf.getString("activation").capitalize)
+        else ActivationFn.Identity)
+      case "batchnorm" => LayerDef.BatchNorm(-1)
+      case "dropout" => LayerDef.Dropout(conf.getDouble("rate"))
+      case "embedding" => LayerDef.Embedding(
+        conf.getInt("vocab-size"), conf.getInt("embedding-dim"), None)
+      case other => throw IllegalArgumentException(s"Unknown layer type: $other")
+
+  private def parseModel(conf: com.typesafe.config.Config): ModelDef =
+    val s = conf.getConfig("sequential")
+    val layers = s.getConfigList("layers").asScala.map(parseLayer).toList
+    val seed = if s.hasPath("seed") then s.getLong("seed") else 42L
+    ModelDef.Sequential(SequentialDef(
+      inputSize = s.getInt("input-size"),
+      layers = layers.map(AnyLayer.Standard(_)),
+      seed = seed, convInput = None))
+
   def fromHocon(path: String): Task[ModelDef] =
-    ZIO.fail(new UnsupportedOperationException("HOCON config temporarily disabled while AnyLayer/AdvancedLayerDef stabilizes. Use the Scala DSL."))
+    ZIO.attempt {
+      val conf = com.typesafe.config.ConfigFactory.load().getConfig(path)
+      parseModel(conf)
+    }
+
   def fromHoconWithTraining(path: String): Task[(ModelDef, Option[TrainingParams])] =
-    ZIO.fail(new UnsupportedOperationException("HOCON config temporarily disabled."))
+    ZIO.attempt {
+      val conf = com.typesafe.config.ConfigFactory.load().getConfig(path)
+      val model = parseModel(conf)
+      val training = if conf.hasPath("training") then
+        val t = conf.getConfig("training")
+        Some(TrainingParams(
+          epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
+          learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
+          batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32))
+      else None
+      (model, training)
+    }
+
   def fromString(hocon: String, path: String = "model"): Task[ModelDef] =
-    ZIO.fail(new UnsupportedOperationException("HOCON config temporarily disabled."))
+    ZIO.attempt {
+      parseModel(com.typesafe.config.ConfigFactory.parseString(hocon).resolve().getConfig(path))
+    }
+
   def fromStringWithTraining(hocon: String, path: String = "model"): Task[(ModelDef, Option[TrainingParams])] =
-    ZIO.fail(new UnsupportedOperationException("HOCON config temporarily disabled."))
+    ZIO.attempt {
+      val conf = com.typesafe.config.ConfigFactory.parseString(hocon).resolve().getConfig(path)
+      val model = parseModel(conf)
+      val training = if conf.hasPath("training") then
+        val t = conf.getConfig("training")
+        Some(TrainingParams(
+          epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
+          learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
+          batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32))
+      else None
+      (model, training)
+    }
+
   def defaultHocon: String =
     """model {
       |  sequential {
