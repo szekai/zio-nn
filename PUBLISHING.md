@@ -34,7 +34,7 @@ sbt publishLocal
 sbt publishM2
 
 # Verify artifacts
-ls ~/.m2/repository/dev/zio/zio-nn-core_3/0.5.0/
+ls ~/.m2/repository/io/github/szekai/zio-nn-core_3/0.7.2/
 ```
 
 ## Sonatype Staging (Dry Run)
@@ -51,8 +51,8 @@ sbt sonatypeBundleRelease  # use sonatypeDrop to abort
 # 1. Set version in build.sbt (remove -SNAPSHOT)
 # 2. Commit and tag
 git add build.sbt
-git commit -m "Release v0.5.0"
-git tag -a v0.5.0 -m "zio-nn v0.5.0"
+git commit -m "Release v0.7.2"
+git tag -a v0.7.2 -m "zio-nn v0.7.2"
 git push origin main --tags
 
 # 3. Publish signed artifacts
@@ -62,9 +62,9 @@ sbt publishSigned
 sbt sonatypeBundleRelease
 
 # 5. Bump version for next development cycle
-# Edit build.sbt: version := "0.5.1-SNAPSHOT"
+# Edit build.sbt: version := "0.7.3-SNAPSHOT"
 git add build.sbt
-git commit -m "Bump to v0.5.1-SNAPSHOT"
+git commit -m "Bump to v0.7.3-SNAPSHOT"
 git push
 ```
 
@@ -75,9 +75,9 @@ After release, dependencies are available at:
 ```scala
 // build.sbt
 libraryDependencies ++= Seq(
-  "io.github.szekai" %% "zio-nn-core" % "0.5.0",
-  "io.github.szekai" %% "zio-nn-djl"  % "0.5.0",
-  // or "io.github.szekai" %% "zio-nn-dl4j" % "0.5.0"
+  "io.github.szekai" %% "zio-nn-core" % "0.7.2",
+  "io.github.szekai" %% "zio-nn-djl"  % "0.7.2",
+  // or "io.github.szekai" %% "zio-nn-dl4j" % "0.7.2"
 )
 ```
 

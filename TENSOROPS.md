@@ -22,8 +22,8 @@ yield arr
 
 ```scala
 // build.sbt — swap this ONE line:
-libraryDependencies += "dev.zio" %% "zio-nn-dl4j" % "0.5.1"   // DL4J
-libraryDependencies += "dev.zio" %% "zio-nn-djl"  % "0.5.1"   // DJL
+libraryDependencies += "io.github.szekai" %% "zio-nn-dl4j" % "0.7.2"   // DL4J
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl"  % "0.7.2"   // DJL
 ```
 
 All consumer code remains unchanged. `import zio.nn.TensorOps.*` auto-resolves.

@@ -208,6 +208,35 @@ Sequential(3)(                                    // 3 input channels
 | Conv2D | `Conv2D(32, (3,3))` | 2D convolution |
 | MaxPool2D | `MaxPool2D((2,2))` | Downsampling |
 | Flatten | `Flatten` | Flatten spatial → 1D |
+| Embedding | `Embedding(10000, 300)` | Token index → dense vector (first layer only) |
+
+### Word2Vec Embeddings (DL4J only)
+
+```scala
+import zio.nn.dl4j.embeddings.*
+
+// Load pre-trained vectors
+val w2v = Word2Vec.loadGoogleNewsVectors(Path.of("vectors.bin")).get
+
+// Use as first layer with pre-trained weights
+val arch = Sequential(1)(
+  w2v.toEmbeddingLayer(),    // vocabSize + dim + weights auto-detected
+  LSTM(256, Tanh),
+  Output(2, Softmax)
+).build
+
+val model = ZModel.create(arch).get
+
+// Predict / train with integer token indices
+model.predictInt(Array(Array(42)))       // Try[Array[Float]]
+model.fitInt(tokens, labels, epochs = 5) // Try[FitResult]
+
+// Word2Vec queries
+w2v.similarity("day", "night")           // Task[Double]
+w2v.wordsNearest("king", 10)             // Task[List[String]]
+```
+
+DJL users: export PyTorch `nn.Embedding` as ONNX, load via `ZModel.load(path, engine="OnnxRuntime")`.
 
 ### Activations, Losses, Optimizers
 
@@ -263,9 +292,12 @@ yield e
 Bridge between unified `Array[Float]` and native tensor types:
 
 ```scala
-import zio.nn.implicits.*
+import zio.nn.djl.implicits.*   // DJL backend
 val nd: NDList = features.toNDList      // unified → native
 val back: Array[Array[Float]] = nd.toFloatArrays  // native → unified
+
+import zio.nn.dl4j.implicits.*  // DL4J backend
+val ind: INDArray = features.toINDArray  // unified → native
 ```
 
 ## Backend Swap
@@ -273,8 +305,8 @@ val back: Array[Array[Float]] = nd.toFloatArrays  // native → unified
 Change one line in `build.sbt` — zero code changes:
 
 ```scala
-"io.github.szekai" %% "zio-nn-djl"  % "0.7.1"  // ← swap
-"io.github.szekai" %% "zio-nn-dl4j" % "0.7.1"  // ← zero code changes
+"io.github.szekai" %% "zio-nn-djl"  % "0.7.2"  // ← swap
+"io.github.szekai" %% "zio-nn-dl4j" % "0.7.2"  // ← zero code changes
 ```
 
 ## Choosing a Backend

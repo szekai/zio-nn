@@ -34,7 +34,7 @@ model.close()
 
 ```scala
 // sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.1"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.2"  // or zio-nn-dl4j
 ```
 
 ## Quick Start
@@ -73,7 +73,7 @@ val features: Array[Array[Float]] = // your training data
 val labels: Array[Float]           = // your labels
 
 model.fit(features, labels, epochs = 50, lr = 0.001f) match
-  case Success(result) => println(s"Loss: ${result.getTrainLoss}")
+  case Success(result) => println(s"Loss: ${result.loss}")
   case _ => println("Training failed")
 ```
 
@@ -313,7 +313,7 @@ libraryDependencies += "com.microsoft.onnxruntime" % "onnxruntime" % "1.19.2"
 
 ---
 
-## Word2Vec Embeddings (v0.8.0)
+## Word2Vec Embeddings (v0.7.2)
 
 Load pre-trained vectors and use them as the first layer in your model:
 
