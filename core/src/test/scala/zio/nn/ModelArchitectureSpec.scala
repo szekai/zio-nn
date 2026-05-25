@@ -22,22 +22,22 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
       val arch = SequentialDef(
         inputSize = 7,
         layers = List(
-          LayerDef.LSTM(7, 64, ActivationFn.Tanh),
-          LayerDef.Dense(64, 32, ActivationFn.ReLU),
-          LayerDef.Output(32, 1, LossFn.MSE)
+          AnyLayer.Standard(LayerDef.LSTM(7, 64, ActivationFn.Tanh)),
+          AnyLayer.Standard(LayerDef.Dense(64, 32, ActivationFn.ReLU)),
+          AnyLayer.Standard(LayerDef.Output(32, 1, LossFn.MSE))
         ),
         optimizer = OptimizerDef.Adam(0.001),
         seed = 42L
       )
       assertTrue(
         arch.layers.size == 3,
-        arch.layers.head.isInstanceOf[LayerDef.LSTM],
-        arch.layers.last.isInstanceOf[LayerDef.Output],
+        arch.layers.head.isInstanceOf[AnyLayer.Standard],
+        arch.layers.last.isInstanceOf[AnyLayer.Standard],
         arch.seed == 42L
       )
     },
     test("ModelDef.Sequential wraps SequentialDef") {
-      val arch = SequentialDef(7, List(LayerDef.Dense(7, 10, ActivationFn.ReLU)))
+      val arch = SequentialDef(7, List(AnyLayer.Standard(LayerDef.Dense(7, 10, ActivationFn.ReLU))))
       val model = ModelDef.Sequential(arch)
       assertTrue(model match
         case ModelDef.Sequential(a) => a.layers.size == 1

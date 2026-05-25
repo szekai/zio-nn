@@ -50,6 +50,18 @@ object dsl:
   def Embedding(vocabSize: Int, embeddingDim: Int, weights: EmbeddingWeights): LayerSpec =
     LayerSpec.Embedding(vocabSize, embeddingDim, Some(weights))
 
+  /** Gated Recurrent Unit — simpler alternative to LSTM. */
+  def GRU(nOut: Int, activation: ActivationFn = ActivationFn.Tanh, dropout: Double = 0.0): LayerSpec =
+    LayerSpec.GRU(nOut, activation, dropout)
+
+  /** Bidirectional wrapper — doubles output dimension via concatenation. */
+  def BiDirectional(inner: LayerSpec): LayerSpec =
+    LayerSpec.BiDirectional(inner)
+
+  /** Multi-head self-attention (core of Transformer architectures). */
+  def MultiHeadAttention(embeddingDim: Int, numHeads: Int, dropout: Double = 0.0): LayerSpec =
+    LayerSpec.MultiHeadAttention(embeddingDim, numHeads, dropout)
+
   // ═══ Activation / Loss / Optimizer shortcuts ═══
   val Tanh    = ActivationFn.Tanh
   val ReLU    = ActivationFn.ReLU
@@ -73,18 +85,30 @@ object dsl:
     case MaxPool2D(poolSize: (Int, Int))
     case Flatten
     case Embedding(vocabSize: Int, embeddingDim: Int, pretrained: Option[EmbeddingWeights] = None)
+    case GRU(nOut: Int, activation: ActivationFn, dropout: Double)
+    case BiDirectional(inner: LayerSpec)
+    case MultiHeadAttention(embeddingDim: Int, numHeads: Int, dropout: Double)
 
-    def resolve(nIn: Int): LayerDef = this match
-      case LayerSpec.LSTM(nOut, act, drop) => LayerDef.LSTM(nIn, nOut, act, drop)
-      case LayerSpec.Dense(nOut, act)      => LayerDef.Dense(nIn, nOut, act)
-      case LayerSpec.Output(nOut, loss, act) => LayerDef.Output(nIn, nOut, loss, act)
-      case LayerSpec.BatchNorm             => LayerDef.BatchNorm(nIn)
-      case LayerSpec.Dropout(rate)         => LayerDef.Dropout(rate)
-      case LayerSpec.Conv2D(filters, kernel, stride, act) => LayerDef.Conv2D(nIn, filters, kernel, stride, act)
-      case LayerSpec.MaxPool2D(poolSize)   => LayerDef.MaxPool2D(poolSize)
-      case LayerSpec.Flatten               => LayerDef.Flatten
+    def resolve(nIn: Int): AnyLayer = this match
+      case LayerSpec.LSTM(nOut, act, drop) => AnyLayer.Standard(LayerDef.LSTM(nIn, nOut, act, drop))
+      case LayerSpec.Dense(nOut, act)      => AnyLayer.Standard(LayerDef.Dense(nIn, nOut, act))
+      case LayerSpec.Output(nOut, loss, act) => AnyLayer.Standard(LayerDef.Output(nIn, nOut, loss, act))
+      case LayerSpec.BatchNorm             => AnyLayer.Standard(LayerDef.BatchNorm(nIn))
+      case LayerSpec.Dropout(rate)         => AnyLayer.Standard(LayerDef.Dropout(rate))
+      case LayerSpec.Conv2D(filters, kernel, stride, act) => AnyLayer.Standard(LayerDef.Conv2D(nIn, filters, kernel, stride, act))
+      case LayerSpec.MaxPool2D(poolSize)   => AnyLayer.Standard(LayerDef.MaxPool2D(poolSize))
+      case LayerSpec.Flatten               => AnyLayer.Standard(LayerDef.Flatten)
       case LayerSpec.Embedding(vocabSize, embeddingDim, pretrained) =>
-        LayerDef.Embedding(vocabSize, embeddingDim, pretrained)  // nIn ignored for Embedding
+        AnyLayer.Standard(LayerDef.Embedding(vocabSize, embeddingDim, pretrained))
+      case LayerSpec.GRU(nOut, act, drop) => AnyLayer.Advanced(AdvancedLayerDef.GRU(nIn, nOut, act, drop))
+      case LayerSpec.BiDirectional(inner) =>
+        val resolved = inner.resolve(nIn) match
+          case AnyLayer.Standard(LayerDef.LSTM(_, nOut, act, drop)) =>
+            (BidirectionalKind.LSTM, nOut, act, drop)
+          case _ => throw IllegalArgumentException(s"BiDirectional inner layer must be LSTM")
+        AnyLayer.Advanced(AdvancedLayerDef.BiDirectional(resolved._1, nIn, resolved._2, resolved._3, resolved._4))
+      case LayerSpec.MultiHeadAttention(embeddingDim, numHeads, dropout) =>
+        AnyLayer.Advanced(AdvancedLayerDef.MultiHeadAttention(embeddingDim, numHeads, dropout))
 
     def outputSize: Int = this match
       case LayerSpec.LSTM(nOut, _, _)   => nOut
@@ -96,6 +120,9 @@ object dsl:
       case LayerSpec.MaxPool2D(_)       => -1
       case LayerSpec.Flatten            => -1
       case LayerSpec.Embedding(_, embeddingDim, _) => embeddingDim
+      case LayerSpec.GRU(nOut, _, _)           => nOut
+      case LayerSpec.BiDirectional(inner)      => inner.outputSize * 2
+      case LayerSpec.MultiHeadAttention(embeddingDim, _, _) => embeddingDim
 
   // ═══ Sequential builder ═══
 
@@ -117,12 +144,12 @@ object dsl:
       new SequentialBuilder(inputSize, layers, optimizer, seed, Some(ConvInput(height, width, channels)))
 
     def build: ModelDef =
-      val resolved = layers.foldLeft((inputSize, List.empty[LayerDef])) { case ((nIn, acc), spec) =>
-        val layer = spec.resolve(nIn)
+      val resolved = layers.foldLeft((inputSize, List.empty[AnyLayer])) { case ((nIn, acc), spec) =>
+        val anyLayer = spec.resolve(nIn)
         val nextN = spec.outputSize match
           case -1 => nIn
           case n  => n
-        (nextN, acc :+ layer)
+        (nextN, acc :+ anyLayer)
       }
       ModelDef.Sequential(SequentialDef(inputSize, resolved._2, optimizer, seed, convInput))
 

@@ -26,8 +26,8 @@ object DSLSpec extends ZIOSpecDefault:
         arch match
           case ModelDef.Sequential(s) =>
             assertTrue(s.layers.size == 3)
-            assertTrue(s.layers.head.isInstanceOf[LayerDef.LSTM])
-            assertTrue(s.layers.last.isInstanceOf[LayerDef.Output])
+            assertTrue(s.layers.head match { case AnyLayer.Standard(LayerDef.LSTM(_, _, _, _)) => true; case _ => false })
+            assertTrue(s.layers.last match { case AnyLayer.Standard(LayerDef.Output(_, _, _, _)) => true; case _ => false })
           case _ => assertTrue(false)
       },
       test("BatchNorm in middle preserves dimensions") {
