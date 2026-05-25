@@ -34,6 +34,24 @@ enum LayerDef:
   case MaxPool2D(poolSize: (Int, Int) = (2, 2))
   case Flatten
 
+  /** Maps discrete token IDs to dense vector representations.
+    * When used as first layer, model input is `Array[Array[Int]]` (token indices).
+    * Set `pretrained = Some(EmbeddingWeights(...))` to initialize from pre-trained vectors.
+    *
+    * @param vocabSize     number of unique tokens in vocabulary
+    * @param embeddingDim  dimension of each embedding vector (e.g. 300 for Google News)
+    * @param pretrained    pre-trained weights to initialize the embedding table (None = random init)
+    */
+  case Embedding(vocabSize: Int, embeddingDim: Int, pretrained: Option[EmbeddingWeights] = None)
+
+/** Pre-trained embedding vectors — framework-free bridge type between
+  * the DL4J embeddings module and the core LayerDef.
+  *
+  * @param vocabulary word → token ID mapping
+  * @param vectors    vectors(tokenId) → float array of length embeddingDim
+  */
+case class EmbeddingWeights(vocabulary: Map[String, Int], vectors: Array[Array[Float]])
+
 // ═══════════════════════════════════════════════════════════
 //  Activation Functions
 // ═══════════════════════════════════════════════════════════

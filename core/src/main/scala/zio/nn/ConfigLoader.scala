@@ -5,6 +5,13 @@ import zio.config.*
 import zio.config.typesafe.*
 import zio.config.magnolia.*
 
+/** Provides a Config instance for [[EmbeddingWeights]] so that
+  * zio-config-magnolia can derive configs for [[LayerDef.Embedding]].
+  * EmbeddingWeights are programmatic-only — the config always returns an
+  * empty default; pre-trained weights must be set in code via the DSL.
+  */
+given Config[EmbeddingWeights] = Config.succeed(EmbeddingWeights(Map.empty, Array.empty))
+
 /** Load model architecture from HOCON/YAML config files.
   *
   * Usage:

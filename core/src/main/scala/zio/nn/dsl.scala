@@ -36,6 +36,20 @@ object dsl:
   def MaxPool2D(poolSize: (Int, Int) = (2, 2)): LayerSpec = LayerSpec.MaxPool2D(poolSize)
   def Flatten: LayerSpec = LayerSpec.Flatten
 
+  /** Create a randomly-initialized embedding layer.
+    *
+    * @param vocabSize    number of unique tokens
+    * @param embeddingDim output vector dimension
+    */
+  def Embedding(vocabSize: Int, embeddingDim: Int): LayerSpec =
+    LayerSpec.Embedding(vocabSize, embeddingDim, None)
+
+  /** Create an embedding layer with pre-trained weights.
+    * Called by `Word2VecModel.toEmbeddingLayer()` in the embeddings module.
+    */
+  def Embedding(vocabSize: Int, embeddingDim: Int, weights: EmbeddingWeights): LayerSpec =
+    LayerSpec.Embedding(vocabSize, embeddingDim, Some(weights))
+
   // ═══ Activation / Loss / Optimizer shortcuts ═══
   val Tanh    = ActivationFn.Tanh
   val ReLU    = ActivationFn.ReLU
@@ -58,6 +72,7 @@ object dsl:
     case Conv2D(filters: Int, kernel: (Int, Int), stride: (Int, Int), activation: ActivationFn)
     case MaxPool2D(poolSize: (Int, Int))
     case Flatten
+    case Embedding(vocabSize: Int, embeddingDim: Int, pretrained: Option[EmbeddingWeights] = None)
 
     def resolve(nIn: Int): LayerDef = this match
       case LayerSpec.LSTM(nOut, act, drop) => LayerDef.LSTM(nIn, nOut, act, drop)
@@ -68,6 +83,8 @@ object dsl:
       case LayerSpec.Conv2D(filters, kernel, stride, act) => LayerDef.Conv2D(nIn, filters, kernel, stride, act)
       case LayerSpec.MaxPool2D(poolSize)   => LayerDef.MaxPool2D(poolSize)
       case LayerSpec.Flatten               => LayerDef.Flatten
+      case LayerSpec.Embedding(vocabSize, embeddingDim, pretrained) =>
+        LayerDef.Embedding(vocabSize, embeddingDim, pretrained)  // nIn ignored for Embedding
 
     def outputSize: Int = this match
       case LayerSpec.LSTM(nOut, _, _)   => nOut
@@ -78,6 +95,7 @@ object dsl:
       case LayerSpec.Conv2D(_, _, _, _) => -1
       case LayerSpec.MaxPool2D(_)       => -1
       case LayerSpec.Flatten            => -1
+      case LayerSpec.Embedding(_, embeddingDim, _) => embeddingDim
 
   // ═══ Sequential builder ═══
 
