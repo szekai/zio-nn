@@ -70,6 +70,33 @@ Pre-1.0 (`0.y.z`) follows standard semver conventions:
 
 Post-1.0, standard semver applies: MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
 
+### 3a. Release Candidates (`-RC`)
+
+For MAJOR version bumps (new module, new layers, API changes), use release candidates before the final tag:
+
+```
+0.8.0-RC1   →  publish, test downstream, gather feedback
+0.8.0-RC2   →  fix issues found in RC1 (if needed)
+0.8.0       →  final release, no changes from last RC
+```
+
+**Why**: Maven Central artifacts are immutable — you cannot delete, overwrite, or retract a published version. An RC lets you verify the published artifact works in real projects before committing to the final version tag. If an RC has bugs, you burn `-RC2` instead of `0.8.1`.
+
+**When**: Required for any release that adds a new module or LayerDef variant. Optional for minor (z) bumps.
+
+### 3b. Milestones
+
+Use GitHub Milestones to group issues and track progress toward a version:
+
+```
+Milestone: v0.9.0
+  ├── #15  Transformer / Attention layers
+  ├── #16  Model checkpointing improvements
+  └── #17  Performance benchmarks
+```
+
+**Convention**: Milestone title matches the target version tag. Close the milestone when the version is released. Each open issue in a milestone blocks that release.
+
 ## Boundary Rules
 
 - **Never** add framework-specific code to `core/`. It must stay backend-agnostic.
