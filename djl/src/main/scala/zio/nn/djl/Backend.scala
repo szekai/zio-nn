@@ -144,6 +144,16 @@ object Backend:
     case LayerDef.Flatten =>
       Blocks.batchFlattenBlock()
 
+    case LayerDef.Embedding(vocabSize, embeddingDim, _) =>
+      // DJL 0.36+ Embedding has no public builder (only abstract BaseBuilder).
+      // To use embeddings with DJL: train in PyTorch torch.nn.Embedding,
+      // export as ONNX, load via ZModel.load(path, engine="OnnxRuntime").
+      sys.error(
+        s"DJL backend does not support compiling Embedding layers from zio-nn DSL. " +
+        s"Use the ONNX escape hatch: export your PyTorch embedding model as .onnx, " +
+        s"then load with ZModel.load(path, engine=\"OnnxRuntime\"). " +
+        s"Alternatively, use the DL4J backend which has full Embedding support.")
+
   private def toDJLActivationBlock(act: ActivationFn): Block = act match
     case ActivationFn.Tanh      => DJLActivation.tanhBlock()
     case ActivationFn.ReLU      => DJLActivation.reluBlock()

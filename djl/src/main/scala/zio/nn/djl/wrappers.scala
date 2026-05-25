@@ -74,6 +74,43 @@ class ZModel(val underlying: Model, ndm: NDManager):
   def save(path: Path): Try[Unit] = Try(underlying.save(path, "model"))
   def close(): Unit = { underlying.close(); ndm.close() }
 
+  /** Predict with integer token indices (when first layer is Embedding). */
+  def predictInt(tokens: Array[Array[Int]]): Try[Array[Float]] =
+    val sub = ndm.newSubManager()
+    try
+      val flatTokens = tokens.flatten.map(_.toLong)
+      val input = new NDList(sub.create(flatTokens, new Shape(tokens.length.toLong, tokens.head.length.toLong)))
+      val pred = Predictor(underlying, new NoopTranslator(), Device.cpu(), false)
+      try
+        val result = pred.predict(input)
+        val head = result.head()
+        val arr = new Array[Float](head.size().toInt)
+        System.arraycopy(head.toFloatArray, 0, arr, 0, arr.length)
+        Try(arr)
+      finally pred.close()
+    finally sub.close()
+
+  /** Train with integer token indices (when first layer is Embedding). */
+  def fitInt(tokens: Array[Array[Int]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
+    Try {
+      val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
+      val config = new DefaultTrainingConfig(Loss.l2Loss())
+      config.optOptimizer(adam)
+      config.optInitializer(new XavierInitializer(), "weight")
+      val trainer = underlying.newTrainer(config)
+      try
+        val flatTokens = tokens.flatten.map(_.toLong)
+        trainer.initialize(new Shape(tokens.length.toLong, tokens.head.length.toLong))
+        for _ <- 1 to epochs do
+          val dataArr = ndm.create(flatTokens, new Shape(tokens.length.toLong, tokens.head.length.toLong))
+          val labelArr = ndm.create(labels.map(_.toFloat))
+          val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
+            tokens.length, null, null, tokens.length.toLong, 0L, java.util.Collections.emptyList[Any]())
+          ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
+        FitResult(trainer.getTrainingResult.getTrainLoss.toDouble, epochs)
+      finally trainer.close()
+    }
+
   def summary: String =
     val sb = new StringBuilder(s"ZModel[${underlying.getName}]\n")
     val children = underlying.getBlock.getChildren
