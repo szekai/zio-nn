@@ -2,7 +2,7 @@
 
 ## Architecture
 
-zio-nn has three layers that work together to let you write framework-agnostic neural network code:
+zio-nn has four layers that work together to let you write framework-agnostic neural network code:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -19,6 +19,9 @@ zio-nn has three layers that work together to let you write framework-agnostic n
 │  Backend Layer (djl / dl4j)                             │
 │  Backend.compile(ModelDef) → Block / MultiLayerNetwork  │
 │  ZModel wraps native model objects                      │
+├─────────────────────────────────────────────────────────┤
+│  Embeddings Module (dl4j-embeddings)                    │
+│  Word2Vec.train(), .load(), .toEmbeddingLayer()         │
 ├─────────────────────────────────────────────────────────┤
 │  Native Framework                                       │
 │  ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork     │
@@ -209,6 +212,23 @@ Sequential(3)(                                    // 3 input channels
 | MaxPool2D | `MaxPool2D((2,2))` | Downsampling |
 | Flatten | `Flatten` | Flatten spatial → 1D |
 | Embedding | `Embedding(10000, 300)` | Token index → dense vector (first layer only) |
+| GRU | `GRU(64, Tanh)` | Gated recurrent unit (2 gates, no cell state) |
+| BiDirectional | `BiDirectional(LSTM(64))` | Bidirectional wrapper, doubles output dim |
+| MultiHeadAttention | `MultiHeadAttention(300, 8)` | Multi-head self-attention (Transformer) |
+
+### GRU vs LSTM Equations
+
+LSTM (6 equations, 3 gates + cell state) vs GRU (4 equations, 2 gates):
+
+```
+LSTM:  f_t = σ(W_f·[h_{t-1},x_t]+b_f)  i_t = σ(W_i·[h_{t-1},x_t]+b_i)
+       o_t = σ(W_o·[h_{t-1},x_t]+b_o)  c̃_t = tanh(W_c·[h_{t-1},x_t]+b_c)
+       c_t = f_t ⊙ c_{t-1} + i_t ⊙ c̃_t  h_t = o_t ⊙ tanh(c_t)
+
+GRU:   z_t = σ(W_z·[h_{t-1},x_t]+b_z)  r_t = σ(W_r·[h_{t-1},x_t]+b_r)
+       h̃_t = tanh(W_h·[r_t ⊙ h_{t-1},x_t]+b_h)
+       h_t = (1-z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
+```
 
 ### Word2Vec Embeddings (DL4J only)
 

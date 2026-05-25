@@ -110,6 +110,12 @@ val loaded = ZModel.load(Path.of("models/my-model"))
 | `BatchNorm` | `LayerDef.BatchNorm(nIn=auto)` |
 | `Dropout(0.3)` | `LayerDef.Dropout(0.3)` |
 | `Embedding(10000, 300)` | `LayerDef.Embedding(vocabSize=10000, embeddingDim=300)` |
+| `Conv2D(32, (3,3))` | `LayerDef.Conv2D(nIn=auto, filters=32, kernel=(3,3), ReLU)` |
+| `MaxPool2D((2,2))` | `LayerDef.MaxPool2D(poolSize=(2,2))` |
+| `Flatten` | `LayerDef.Flatten` |
+| `GRU(64, Tanh)` | `AdvancedLayerDef.GRU(nIn=auto, nOut=64, Tanh)` (DJL only) |
+| `BiDirectional(LSTM(64))` | `AdvancedLayerDef.BiDirectional(LSTM, nIn=auto, nOut=64, Tanh)` |
+| `MultiHeadAttention(300, 8)` | `AdvancedLayerDef.MultiHeadAttention(embeddingDim=300, numHeads=8)` |
 
 Input sizes auto-propagate through the chain: `Sequential(7)(LSTM(64), Dense(32), Output(1))` — the compiler resolves 7→64, 64→32, 32→1 automatically.
 
@@ -159,9 +165,60 @@ Sequential(7)(
 | Sequential models | ✅ | ✅ |
 | Save / Load | ✅ | ✅ |
 | Embedding | ✅ | ✅ |
-| GRU | ❌ (use LSTM or DJL backend) | ✅ |
-| BiDirectional (LSTM/GRU) | ✅ (LSTM only) | ✅ |
+| GRU | ✅ | ✅ |
+| BiDirectional (LSTM/GRU) | ✅ | ✅ |
 | MultiHeadAttention | ✅ | ✅ |
+
+### GRU vs LSTM
+
+GRU (Gated Recurrent Unit) is a simpler alternative to LSTM with fewer gates and no separate cell state:
+
+**LSTM equations** (3 gates + cell state):
+```
+f_t = σ(W_f·[h_{t-1}, x_t] + b_f)   // forget gate
+i_t = σ(W_i·[h_{t-1}, x_t] + b_i)   // input gate
+o_t = σ(W_o·[h_{t-1}, x_t] + b_o)   // output gate
+c̃_t = tanh(W_c·[h_{t-1}, x_t] + b_c) // cell candidate
+c_t = f_t ⊙ c_{t-1} + i_t ⊙ c̃_t     // cell state
+h_t = o_t ⊙ tanh(c_t)                // hidden state
+```
+
+**GRU equations** (2 gates, no cell state):
+```
+z_t = σ(W_z·[h_{t-1}, x_t] + b_z)   // update gate
+r_t = σ(W_r·[h_{t-1}, x_t] + b_r)   // reset gate
+h̃_t = tanh(W_h·[r_t ⊙ h_{t-1}, x_t] + b_h)
+h_t = (1-z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
+```
+
+GRU has fewer parameters and often converges faster. Use GRU when you want faster training; use LSTM when you need the extra expressiveness of a separate cell state.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Your Code (import zio.nn.dsl.*, zio.nn.*)              │
+│  Sequential(1)(Embedding(10k,300), BiDirectional(       │
+│    LSTM(256)), MultiHeadAttention(256,8), Output(2))    │
+├─────────────────────────────────────────────────────────┤
+│  DSL Layer (core)                                       │
+│  LayerDef (LSTM,Dense,Output,BatchNorm,Dropout,Conv2D,  │
+│    MaxPool2D,Flatten,Embedding)                         │
+│  + AdvancedLayerDef (GRU,BiDirectional,MultiHeadAttn)   │
+│  Wrapped in AnyLayer for unified SequentialDef          │
+├─────────────────────────────────────────────────────────┤
+│  Backend Layer (djl / dl4j)                             │
+│  Backend.compile(ModelDef) → Block / MultiLayerNetwork  │
+│  ZModel wraps native model objects                      │
+├─────────────────────────────────────────────────────────┤
+│  Embeddings Module (dl4j-embeddings)                    │
+│  Word2Vec.train(), .load(), .similarity(), .wordsNearest│
+│  Word2VecModel → EmbeddingWeights → LayerSpec bridge    │
+├─────────────────────────────────────────────────────────┤
+│  Native Framework                                       │
+│  ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork     │
+└─────────────────────────────────────────────────────────┘
+```
 
 ### Escape Hatches (framework-specific)
 
@@ -361,7 +418,7 @@ val glove = Word2Vec.loadGloVe(Path.of("glove.6B.300d.txt")).get
 | `predictInt(tokens)` | DJL + DL4J | Predict from token-index input |
 | `fitInt(tokens, labels, epochs)` | DJL + DL4J | Train from token-index input |
 
-**DJL Note**: DJL's `Embedding` block has no public builder in version 0.36. To use embeddings with DJL, export your PyTorch `nn.Embedding` as ONNX and load via `ZModel.load(path, engine="OnnxRuntime")`.
+**DJL Note**: Both backends support embeddings natively. DJL uses `IdEmbedding` for integer-index embeddings.
 
 ## License
 
