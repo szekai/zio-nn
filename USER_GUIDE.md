@@ -2,7 +2,7 @@
 
 ## Architecture
 
-zio-nn has three layers that work together to let you write framework-agnostic neural network code:
+zio-nn has four layers that work together to let you write framework-agnostic neural network code:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -19,6 +19,9 @@ zio-nn has three layers that work together to let you write framework-agnostic n
 │  Backend Layer (djl / dl4j)                             │
 │  Backend.compile(ModelDef) → Block / MultiLayerNetwork  │
 │  ZModel wraps native model objects                      │
+├─────────────────────────────────────────────────────────┤
+│  Embeddings Module (dl4j-embeddings)                    │
+│  Word2Vec.train(), .load(), .toEmbeddingLayer()         │
 ├─────────────────────────────────────────────────────────┤
 │  Native Framework                                       │
 │  ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork     │
@@ -208,6 +211,52 @@ Sequential(3)(                                    // 3 input channels
 | Conv2D | `Conv2D(32, (3,3))` | 2D convolution |
 | MaxPool2D | `MaxPool2D((2,2))` | Downsampling |
 | Flatten | `Flatten` | Flatten spatial → 1D |
+| Embedding | `Embedding(10000, 300)` | Token index → dense vector (first layer only) |
+| GRU | `GRU(64, Tanh)` | Gated recurrent unit (2 gates, no cell state) |
+| BiDirectional | `BiDirectional(LSTM(64))` | Bidirectional wrapper, doubles output dim |
+| MultiHeadAttention | `MultiHeadAttention(300, 8)` | Multi-head self-attention (Transformer) |
+
+### GRU vs LSTM Equations
+
+LSTM (6 equations, 3 gates + cell state) vs GRU (4 equations, 2 gates):
+
+```
+LSTM:  f_t = σ(W_f·[h_{t-1},x_t]+b_f)  i_t = σ(W_i·[h_{t-1},x_t]+b_i)
+       o_t = σ(W_o·[h_{t-1},x_t]+b_o)  c̃_t = tanh(W_c·[h_{t-1},x_t]+b_c)
+       c_t = f_t ⊙ c_{t-1} + i_t ⊙ c̃_t  h_t = o_t ⊙ tanh(c_t)
+
+GRU:   z_t = σ(W_z·[h_{t-1},x_t]+b_z)  r_t = σ(W_r·[h_{t-1},x_t]+b_r)
+       h̃_t = tanh(W_h·[r_t ⊙ h_{t-1},x_t]+b_h)
+       h_t = (1-z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
+```
+
+### Word2Vec Embeddings (DL4J only)
+
+```scala
+import zio.nn.dl4j.embeddings.*
+
+// Load pre-trained vectors
+val w2v = Word2Vec.loadGoogleNewsVectors(Path.of("vectors.bin")).get
+
+// Use as first layer with pre-trained weights
+val arch = Sequential(1)(
+  w2v.toEmbeddingLayer(),    // vocabSize + dim + weights auto-detected
+  LSTM(256, Tanh),
+  Output(2, Softmax)
+).build
+
+val model = ZModel.create(arch).get
+
+// Predict / train with integer token indices
+model.predictInt(Array(Array(42)))       // Try[Array[Float]]
+model.fitInt(tokens, labels, epochs = 5) // Try[FitResult]
+
+// Word2Vec queries
+w2v.similarity("day", "night")           // Task[Double]
+w2v.wordsNearest("king", 10)             // Task[List[String]]
+```
+
+DJL users: export PyTorch `nn.Embedding` as ONNX, load via `ZModel.load(path, engine="OnnxRuntime")`.
 
 ### Activations, Losses, Optimizers
 
@@ -263,9 +312,12 @@ yield e
 Bridge between unified `Array[Float]` and native tensor types:
 
 ```scala
-import zio.nn.implicits.*
+import zio.nn.djl.implicits.*   // DJL backend
 val nd: NDList = features.toNDList      // unified → native
 val back: Array[Array[Float]] = nd.toFloatArrays  // native → unified
+
+import zio.nn.dl4j.implicits.*  // DL4J backend
+val ind: INDArray = features.toINDArray  // unified → native
 ```
 
 ## Backend Swap
@@ -273,8 +325,8 @@ val back: Array[Array[Float]] = nd.toFloatArrays  // native → unified
 Change one line in `build.sbt` — zero code changes:
 
 ```scala
-"io.github.szekai" %% "zio-nn-djl"  % "0.7.1"  // ← swap
-"io.github.szekai" %% "zio-nn-dl4j" % "0.7.1"  // ← zero code changes
+"io.github.szekai" %% "zio-nn-djl"  % "0.8.0"  // ← swap
+"io.github.szekai" %% "zio-nn-dl4j" % "0.8.0"  // ← zero code changes
 ```
 
 ## Choosing a Backend

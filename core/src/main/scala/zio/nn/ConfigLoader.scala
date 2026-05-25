@@ -1,97 +1,84 @@
 package zio.nn
-
 import zio.*
-import zio.config.*
-import zio.config.typesafe.*
-import zio.config.magnolia.*
+import scala.jdk.CollectionConverters.*
 
-/** Load model architecture from HOCON/YAML config files.
-  *
-  * Usage:
-  * {{{
-  *   // application.conf:
-  *   //   model {
-  *   //     input-size = 7
-  *   //     layers = [
-  *   //       { type = lstm, n-out = 64, activation = tanh }
-  *   //       { type = dense, n-out = 32, activation = relu }
-  *   //       { type = output, n-out = 1, loss = mse }
-  *   //     ]
-  *   //     optimizer = { type = adam, learning-rate = 0.001 }
-  *   //     seed = 42
-  *   //   }
-  *
-  *   val arch: Task[ModelDef] = ConfigLoader.fromHocon("model")
-  *   val model = for
-  *     a <- arch
-  *     m <- ZModel.create(a, "config-model")
-  *   yield m
-  * }}}
-  */
 object ConfigLoader:
+  private def parseActivation(s: String): ActivationFn =
+    ActivationFn.values.find(_.toString.equalsIgnoreCase(s))
+      .getOrElse(throw IllegalArgumentException(s"Unknown activation: $s (valid: ${ActivationFn.values.mkString(", ")})"))
 
-  /** Load a ModelDef from a HOCON path in application.conf.
-    * Example path: "models.lstm-trend", "model", "architectures.cnn"
-    */
+  private def parseLoss(s: String): LossFn =
+    LossFn.values.find(_.toString.equalsIgnoreCase(s))
+      .getOrElse(throw IllegalArgumentException(s"Unknown loss: $s (valid: ${LossFn.values.mkString(", ")})"))
+
+  private def parseLayer(conf: com.typesafe.config.Config): LayerDef =
+    conf.getString("type") match
+      case "lstm" => LayerDef.LSTM(-1,
+        conf.getInt("n-out"),
+        parseActivation(conf.getString("activation")),
+        if conf.hasPath("dropout") then conf.getDouble("dropout") else 0.0)
+      case "dense" => LayerDef.Dense(-1,
+        conf.getInt("n-out"),
+        parseActivation(conf.getString("activation")))
+      case "output" => LayerDef.Output(-1,
+        conf.getInt("n-out"),
+        if conf.hasPath("loss") then parseLoss(conf.getString("loss")) else LossFn.MSE,
+        if conf.hasPath("activation") then parseActivation(conf.getString("activation"))
+        else ActivationFn.Identity)
+      case "batchnorm" => LayerDef.BatchNorm(-1)
+      case "dropout" => LayerDef.Dropout(conf.getDouble("rate"))
+      case "embedding" => LayerDef.Embedding(
+        conf.getInt("vocab-size"), conf.getInt("embedding-dim"), None)
+      case other => throw IllegalArgumentException(s"Unknown layer type: $other")
+
+  private def parseModel(conf: com.typesafe.config.Config): ModelDef =
+    val s = conf.getConfig("sequential")
+    val layers = s.getConfigList("layers").asScala.map(parseLayer).toList
+    val seed = if s.hasPath("seed") then s.getLong("seed") else 42L
+    ModelDef.Sequential(SequentialDef(
+      inputSize = s.getInt("input-size"),
+      layers = layers.map(AnyLayer.Standard(_)),
+      seed = seed, convInput = None))
+
   def fromHocon(path: String): Task[ModelDef] =
-    for
-      provider <- ZIO.attempt(ConfigProvider.fromHoconFilePath("application.conf"))
-      config   <- provider.nested(path).load(deriveConfig[ModelDef])
-    yield config
+    ZIO.attempt {
+      val conf = com.typesafe.config.ConfigFactory.load().getConfig(path)
+      parseModel(conf)
+    }
 
-  /** Load ModelDef + TrainingParams from HOCON.
-    * Parses architecture AND training parameters in one call.
-    * Use when you need epochs, learningRate, batchSize alongside architecture.
-    *
-    * Example HOCON:
-    *   federated.nn {
-    *     sequential { input-size = 30, layers = [...], optimizer = { adam: { learning-rate = 0.001 } } }
-    *     training { epochs = 100, learning-rate = 0.01, batch-size = 32 }
-    *   }
-    */
   def fromHoconWithTraining(path: String): Task[(ModelDef, Option[TrainingParams])] =
-    for
-      provider <- ZIO.attempt(ConfigProvider.fromHoconFilePath("application.conf"))
-      model    <- provider.nested(path).load(deriveConfig[ModelDef])
-      training <- ZIO.attempt {
-        val conf = com.typesafe.config.ConfigFactory.load().getConfig(path)
-        if conf.hasPath("training") then
-          val t = conf.getConfig("training")
-          Some(TrainingParams(
-            epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
-            learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
-            batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32
-          ))
-        else None
-      }.catchAll(_ => ZIO.none)
-    yield (model, training)
+    ZIO.attempt {
+      val conf = com.typesafe.config.ConfigFactory.load().getConfig(path)
+      val model = parseModel(conf)
+      val training = if conf.hasPath("training") then
+        val t = conf.getConfig("training")
+        Some(TrainingParams(
+          epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
+          learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
+          batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32))
+      else None
+      (model, training)
+    }
 
-  /** Load from an explicit HOCON string. Useful for testing or inline config. */
   def fromString(hocon: String, path: String = "model"): Task[ModelDef] =
-    for
-      provider <- ZIO.attempt(ConfigProvider.fromHoconString(hocon))
-      config   <- provider.nested(path).load(deriveConfig[ModelDef])
-    yield config
+    ZIO.attempt {
+      parseModel(com.typesafe.config.ConfigFactory.parseString(hocon).resolve().getConfig(path))
+    }
 
-  /** Load ModelDef + TrainingParams from HOCON string. */
   def fromStringWithTraining(hocon: String, path: String = "model"): Task[(ModelDef, Option[TrainingParams])] =
-    for
-      provider <- ZIO.attempt(ConfigProvider.fromHoconString(hocon))
-      model    <- provider.nested(path).load(deriveConfig[ModelDef])
-      training <- ZIO.attempt {
-        val conf = com.typesafe.config.ConfigFactory.parseString(hocon).resolve().getConfig(path)
-        if conf.hasPath("training") then
-          val t = conf.getConfig("training")
-          Some(TrainingParams(
-            epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
-            learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
-            batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32
-          ))
-        else None
-      }.catchAll(_ => ZIO.none)
-    yield (model, training)
+    ZIO.attempt {
+      val conf = com.typesafe.config.ConfigFactory.parseString(hocon).resolve().getConfig(path)
+      val model = parseModel(conf)
+      val training = if conf.hasPath("training") then
+        val t = conf.getConfig("training")
+        Some(TrainingParams(
+          epochs = if t.hasPath("epochs") then t.getInt("epochs") else 100,
+          learningRate = if t.hasPath("learning-rate") then t.getDouble("learning-rate") else 0.01,
+          batchSize = if t.hasPath("batch-size") then t.getInt("batch-size") else 32))
+      else None
+      (model, training)
+    }
 
-  /** Generate the default HOCON template for the default LSTM architecture. */
   def defaultHocon: String =
     """model {
       |  sequential {

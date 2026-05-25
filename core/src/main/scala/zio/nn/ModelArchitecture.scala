@@ -34,6 +34,28 @@ enum LayerDef:
   case MaxPool2D(poolSize: (Int, Int) = (2, 2))
   case Flatten
 
+  /** Maps discrete token IDs to dense vector representations.
+    * When used as first layer, model input is `Array[Array[Int]]` (token indices).
+    * Set `pretrained = Some(EmbeddingWeights(...))` to initialize from pre-trained vectors.
+    *
+    * @param vocabSize     number of unique tokens in vocabulary
+    * @param embeddingDim  dimension of each embedding vector (e.g. 300 for Google News)
+    * @param pretrained    pre-trained weights to initialize the embedding table (None = random init)
+    */
+  case Embedding(vocabSize: Int, embeddingDim: Int, pretrained: Option[EmbeddingWeights] = None)
+
+/** Pre-trained embedding vectors — framework-free bridge type. */
+case class EmbeddingWeights(vocabulary: Map[String, Int], vectors: Array[Array[Float]])
+
+/** Advanced layers not configurable via HOCON (programmatic-only DSL). */
+enum AdvancedLayerDef:
+  case GRU(nIn: Int, nOut: Int, activation: ActivationFn = ActivationFn.Tanh, dropout: Double = 0.0)
+  case BiDirectional(kind: BidirectionalKind, nIn: Int, nOut: Int, activation: ActivationFn, dropout: Double)
+  case MultiHeadAttention(embeddingDim: Int, numHeads: Int, dropout: Double = 0.0)
+
+enum BidirectionalKind:
+  case LSTM, GRU
+
 // ═══════════════════════════════════════════════════════════
 //  Activation Functions
 // ═══════════════════════════════════════════════════════════
@@ -61,19 +83,32 @@ enum OptimizerDef:
 //  Model Definitions
 // ═══════════════════════════════════════════════════════════
 
+/** Wrapper to include both standard and advanced layers in model definitions. */
+enum AnyLayer:
+  case Standard(layer: LayerDef)
+  case Advanced(layer: AdvancedLayerDef)
+
 /** Sequential model: layers stacked in order. Covers 80% of use cases.
   *
   * @param inputSize  input dimension (features for flat, channels for Conv2D)
+  * @param layers     ordered list of layers (standard + advanced)
   * @param convInput  if first layer is Conv2D, set (height, width, channels)
-  *                   so the backend can configure InputType.convolutional
   */
 case class SequentialDef(
   inputSize: Int,
-  layers: List[LayerDef],
+  layers: List[AnyLayer],
   optimizer: OptimizerDef = OptimizerDef.Adam(),
   seed: Long = 42L,
   convInput: Option[ConvInput] = None
 )
+
+object SequentialDef:
+  def apply(inputSize: Int, layers: List[LayerDef]): SequentialDef =
+    SequentialDef(inputSize, layers.map(AnyLayer.Standard(_)))
+  def apply(inputSize: Int, layers: List[LayerDef], optimizer: OptimizerDef): SequentialDef =
+    SequentialDef(inputSize, layers.map(AnyLayer.Standard(_)), optimizer)
+  def apply(inputSize: Int, layers: List[LayerDef], optimizer: OptimizerDef, seed: Long): SequentialDef =
+    SequentialDef(inputSize, layers.map(AnyLayer.Standard(_)), optimizer, seed)
 
 /** Spatial input shape for convolutional models. */
 case class ConvInput(height: Int, width: Int, channels: Int)

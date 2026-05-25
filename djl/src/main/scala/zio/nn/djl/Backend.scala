@@ -4,7 +4,9 @@ import zio.nn.*
 import ai.djl.nn.{Block, SequentialBlock, Blocks, Activation => DJLActivation, LambdaBlock}
 import ai.djl.nn.core.Linear
 import ai.djl.nn.recurrent.LSTM as DJLLSTM
+import ai.djl.nn.recurrent.GRU as DJLGRU
 import ai.djl.nn.norm.BatchNorm as DJLBN
+import ai.djl.nn.transformer.{IdEmbedding, ScaledDotProductAttentionBlock}
 import ai.djl.ndarray.{NDList, NDManager}
 import ai.djl.training.ParameterStore
 import scala.collection.mutable
@@ -21,10 +23,11 @@ object Backend:
 
   private def compileSequential(arch: SequentialDef): Block =
     val block = new SequentialBlock()
-    arch.layers.foreach(layer => block.add(toDJLBlock(layer)))
-    arch.convInput match
-      case Some(_) => block  // DJL Conv2D doesn't need InputType — shape auto-inferred
-      case None    => block
+    arch.layers.foreach {
+      case AnyLayer.Standard(layer) => block.add(toDJLBlock(layer))
+      case AnyLayer.Advanced(adv)  => block.add(toDJLAdvancedLayer(adv))
+    }
+    block
 
   /** Compiles a FunctionalDef DAG into a DJL LambdaBlock.
     * Topological sort + forward-pass routing via DJL's LambdaBlock.
@@ -144,6 +147,12 @@ object Backend:
     case LayerDef.Flatten =>
       Blocks.batchFlattenBlock()
 
+    case LayerDef.Embedding(vocabSize, embeddingDim, _) =>
+      new IdEmbedding.Builder()
+        .setDictionarySize(vocabSize)
+        .setEmbeddingSize(embeddingDim)
+        .build()
+
   private def toDJLActivationBlock(act: ActivationFn): Block = act match
     case ActivationFn.Tanh      => DJLActivation.tanhBlock()
     case ActivationFn.ReLU      => DJLActivation.reluBlock()
@@ -151,3 +160,22 @@ object Backend:
     case ActivationFn.Softmax   => DJLActivation.reluBlock()
     case ActivationFn.Identity  => Blocks.identityBlock()
     case ActivationFn.LeakyReLU => DJLActivation.leakyReluBlock(0.01f)
+
+  private def toDJLAdvancedLayer(adv: AdvancedLayerDef): Block = adv match
+    case AdvancedLayerDef.GRU(_, nOut, _, dropout) =>
+      DJLGRU.builder().setNumLayers(1).setStateSize(nOut)
+        .optDropRate(dropout.toFloat).build()
+    case AdvancedLayerDef.BiDirectional(kind, _, nOut, _, dropout) =>
+      kind match
+        case BidirectionalKind.LSTM =>
+          DJLLSTM.builder().setNumLayers(1).setStateSize(nOut)
+            .optDropRate(dropout.toFloat).optBidirectional(true).build()
+        case BidirectionalKind.GRU =>
+          DJLGRU.builder().setNumLayers(1).setStateSize(nOut)
+            .optDropRate(dropout.toFloat).optBidirectional(true).build()
+    case AdvancedLayerDef.MultiHeadAttention(embeddingDim, numHeads, dropout) =>
+      ScaledDotProductAttentionBlock.builder()
+        .setEmbeddingSize(embeddingDim)
+        .setHeadCount(numHeads)
+        .optAttentionProbsDropoutProb(dropout.toFloat)
+        .build()

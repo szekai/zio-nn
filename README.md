@@ -30,10 +30,11 @@ model.close()
 | `zio-nn-core` | DSL (`dsl.*`), types (`ModelDef`, `LayerDef`, `FitResult`), ConfigLoader, implicits |
 | `zio-nn-djl` | ZModel, Backend, zioApi, TensorOps, scope, implicits — PyTorch/ONNX/TF/XGBoost |
 | `zio-nn-dl4j` | ZModel, Backend, zioApi, TensorOps, implicits — JVM-native (no Python) |
+| `zio-nn-dl4j-embeddings` | Word2Vec training (`SequenceVectors + SkipGram`), pre-trained vector loading, embedding-to-LayerSpec bridge |
 
 ```scala
 // sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.1"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.8.0"  // or zio-nn-dl4j
 ```
 
 ## Quick Start
@@ -72,7 +73,7 @@ val features: Array[Array[Float]] = // your training data
 val labels: Array[Float]           = // your labels
 
 model.fit(features, labels, epochs = 50, lr = 0.001f) match
-  case Success(result) => println(s"Loss: ${result.getTrainLoss}")
+  case Success(result) => println(s"Loss: ${result.loss}")
   case _ => println("Training failed")
 ```
 
@@ -108,8 +109,17 @@ val loaded = ZModel.load(Path.of("models/my-model"))
 | `Output(1)` | `LayerDef.Output(nIn=auto, nOut=1, MSE)` (default) |
 | `BatchNorm` | `LayerDef.BatchNorm(nIn=auto)` |
 | `Dropout(0.3)` | `LayerDef.Dropout(0.3)` |
+| `Embedding(10000, 300)` | `LayerDef.Embedding(vocabSize=10000, embeddingDim=300)` |
+| `Conv2D(32, (3,3))` | `LayerDef.Conv2D(nIn=auto, filters=32, kernel=(3,3), ReLU)` |
+| `MaxPool2D((2,2))` | `LayerDef.MaxPool2D(poolSize=(2,2))` |
+| `Flatten` | `LayerDef.Flatten` |
+| `GRU(64, Tanh)` | `AdvancedLayerDef.GRU(nIn=auto, nOut=64, Tanh)` (DJL only) |
+| `BiDirectional(LSTM(64))` | `AdvancedLayerDef.BiDirectional(LSTM, nIn=auto, nOut=64, Tanh)` |
+| `MultiHeadAttention(300, 8)` | `AdvancedLayerDef.MultiHeadAttention(embeddingDim=300, numHeads=8)` |
 
 Input sizes auto-propagate through the chain: `Sequential(7)(LSTM(64), Dense(32), Output(1))` — the compiler resolves 7→64, 64→32, 32→1 automatically.
+
+For embedding models, `Sequential(1)` starts with token-index input and the `Embedding` layer self-declares `vocabSize`/`embeddingDim`:
 
 ### Shortcuts
 
@@ -154,6 +164,61 @@ Sequential(7)(
 | Adam / SGD / RMSprop | ✅ | ✅ |
 | Sequential models | ✅ | ✅ |
 | Save / Load | ✅ | ✅ |
+| Embedding | ✅ | ✅ |
+| GRU | ✅ | ✅ |
+| BiDirectional (LSTM/GRU) | ✅ | ✅ |
+| MultiHeadAttention | ✅ | ✅ |
+
+### GRU vs LSTM
+
+GRU (Gated Recurrent Unit) is a simpler alternative to LSTM with fewer gates and no separate cell state:
+
+**LSTM equations** (3 gates + cell state):
+```
+f_t = σ(W_f·[h_{t-1}, x_t] + b_f)   // forget gate
+i_t = σ(W_i·[h_{t-1}, x_t] + b_i)   // input gate
+o_t = σ(W_o·[h_{t-1}, x_t] + b_o)   // output gate
+c̃_t = tanh(W_c·[h_{t-1}, x_t] + b_c) // cell candidate
+c_t = f_t ⊙ c_{t-1} + i_t ⊙ c̃_t     // cell state
+h_t = o_t ⊙ tanh(c_t)                // hidden state
+```
+
+**GRU equations** (2 gates, no cell state):
+```
+z_t = σ(W_z·[h_{t-1}, x_t] + b_z)   // update gate
+r_t = σ(W_r·[h_{t-1}, x_t] + b_r)   // reset gate
+h̃_t = tanh(W_h·[r_t ⊙ h_{t-1}, x_t] + b_h)
+h_t = (1-z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
+```
+
+GRU has fewer parameters and often converges faster. Use GRU when you want faster training; use LSTM when you need the extra expressiveness of a separate cell state.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Your Code (import zio.nn.dsl.*, zio.nn.*)              │
+│  Sequential(1)(Embedding(10k,300), BiDirectional(       │
+│    LSTM(256)), MultiHeadAttention(256,8), Output(2))    │
+├─────────────────────────────────────────────────────────┤
+│  DSL Layer (core)                                       │
+│  LayerDef (LSTM,Dense,Output,BatchNorm,Dropout,Conv2D,  │
+│    MaxPool2D,Flatten,Embedding)                         │
+│  + AdvancedLayerDef (GRU,BiDirectional,MultiHeadAttn)   │
+│  Wrapped in AnyLayer for unified SequentialDef          │
+├─────────────────────────────────────────────────────────┤
+│  Backend Layer (djl / dl4j)                             │
+│  Backend.compile(ModelDef) → Block / MultiLayerNetwork  │
+│  ZModel wraps native model objects                      │
+├─────────────────────────────────────────────────────────┤
+│  Embeddings Module (dl4j-embeddings)                    │
+│  Word2Vec.train(), .load(), .similarity(), .wordsNearest│
+│  Word2VecModel → EmbeddingWeights → LayerSpec bridge    │
+├─────────────────────────────────────────────────────────┤
+│  Native Framework                                       │
+│  ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork     │
+└─────────────────────────────────────────────────────────┘
+```
 
 ### Escape Hatches (framework-specific)
 
@@ -305,6 +370,55 @@ libraryDependencies += "com.microsoft.onnxruntime" % "onnxruntime" % "1.19.2"
 ```
 
 ---
+
+---
+
+## Word2Vec Embeddings (v0.8.0)
+
+Load pre-trained vectors and use them as the first layer in your model:
+
+```scala
+import zio.nn.*, zio.nn.dsl.*
+import zio.nn.dl4j.embeddings.*
+
+// Load Google News Word2Vec
+val w2v = Word2Vec.loadGoogleNewsVectors(Path.of("GoogleNews-vectors-negative300.bin")).get
+
+// Use as first layer with pre-trained weights
+val arch = Sequential(1)(
+  w2v.toEmbeddingLayer(),    // vocabSize + dim + weights auto-detected
+  LSTM(256, Tanh),
+  Output(2, Softmax)
+).build
+
+val model = ZModel.create(arch, "imdb-sentiment").get
+
+// Predict with token-index input
+model.predictInt(Array(Array(42)))      // Try[Array[Float]]
+model.fitInt(tokens, labels, epochs=5)  // Try[FitResult]
+
+// Word2Vec similarity queries
+val sim  = w2v.similarity("day", "night")      // Task[Double]
+val near = w2v.wordsNearest("king", 10)         // Task[List[String]]
+
+// GloVe vectors (escape hatch)
+val glove = Word2Vec.loadGloVe(Path.of("glove.6B.300d.txt")).get
+// Convert to EmbeddingWeights manually, then use Embedding(vocabSize, dim, weights)
+```
+
+| Method | Backend | Description |
+|--------|---------|-------------|
+| `Embedding(vocabSize, dim)` | DJL + DL4J | Randomly initialized embedding layer |
+| `Word2Vec.load(path)` | DL4J only | Load pre-trained SequenceVectors |
+| `Word2Vec.loadGloVe(path)` | DL4J only | Load GloVe .txt vectors (escape hatch) |
+| `Word2Vec.loadGoogleNewsVectors(path)` | DL4J only | Load Google News .bin vectors |
+| `toEmbeddingLayer()` | DL4J only | Convert vectors → LayerSpec.Embedding with weights |
+| `similarity(w1, w2)` | DL4J only | Cosine similarity between two words |
+| `wordsNearest(w, n)` | DL4J only | Top-N most similar words |
+| `predictInt(tokens)` | DJL + DL4J | Predict from token-index input |
+| `fitInt(tokens, labels, epochs)` | DJL + DL4J | Train from token-index input |
+
+**DJL Note**: Both backends support embeddings natively. DJL uses `IdEmbedding` for integer-index embeddings.
 
 ## License
 

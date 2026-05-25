@@ -7,7 +7,7 @@ val dl4jV  = "1.0.0-M2.1"
 
 ThisBuild / scalaVersion := scala3
 ThisBuild / organization := "io.github.szekai"
-ThisBuild / version      := "0.7.2"
+ThisBuild / version      := "0.8.0"
 ThisBuild / homepage     := Some(url("https://github.com/szekai/zio-nn"))
 ThisBuild / licenses     := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / developers   := List(
@@ -75,10 +75,25 @@ lazy val dl4j = project
     )
     )
 
+// ── DL4J Embeddings: Word2Vec training + pre-trained vector loading ──
+lazy val embeddings = project
+  .in(file("embeddings"))
+  .dependsOn(core, dl4j)
+  .settings(
+    name := "zio-nn-dl4j-embeddings",
+    libraryDependencies ++= Seq(
+      "dev.zio"             %% "zio"                    % zioV,
+      "dev.zio"             %% "zio-streams"            % zioV,
+      "org.deeplearning4j"   % "deeplearning4j-nlp"     % dl4jV,
+      "dev.zio"             %% "zio-test"               % zioV % Test,
+      "dev.zio"             %% "zio-test-sbt"           % zioV % Test
+    )
+  )
+
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(core, djl, dl4j)
+  .aggregate(core, djl, dl4j, embeddings)
   .settings(
     name := "zio-nn",
     publish / skip := true
