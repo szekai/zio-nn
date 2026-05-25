@@ -6,7 +6,8 @@ import org.deeplearning4j.nn.conf.NeuralNetConfiguration
 import org.deeplearning4j.nn.conf.inputs.InputType
 import org.deeplearning4j.nn.conf.layers.{
   DenseLayer, OutputLayer, LSTM => DL4JLSTM,
-  BatchNormalization => DL4JBN, DropoutLayer
+  BatchNormalization => DL4JBN, DropoutLayer,
+  EmbeddingSequenceLayer
 }
 import org.deeplearning4j.nn.weights.WeightInit
 import org.nd4j.linalg.activations.Activation as DL4JActivation
@@ -76,6 +77,14 @@ object Backend:
       new org.deeplearning4j.nn.conf.layers.SubsamplingLayer.Builder(
         org.deeplearning4j.nn.conf.layers.SubsamplingLayer.PoolingType.MAX,
         Array(poolSize._1, poolSize._2)).build()
+
+    case LayerDef.Embedding(vocabSize, embeddingDim, pretrained) =>
+      val builder = new EmbeddingSequenceLayer.Builder().nIn(vocabSize).nOut(embeddingDim)
+      pretrained match
+        case Some(_) =>
+          builder.weightInit(WeightInit.ZERO).build()
+        case None =>
+          builder.weightInit(WeightInit.XAVIER).build()
 
   private def toDL4JActivation(act: ActivationFn): DL4JActivation = act match
     case ActivationFn.Tanh => DL4JActivation.TANH; case ActivationFn.ReLU => DL4JActivation.RELU

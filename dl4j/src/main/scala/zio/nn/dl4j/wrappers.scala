@@ -49,6 +49,25 @@ class ZModel(val underlying: MultiLayerNetwork):
       sb.append(f"  $i%3d  ${layers(i).getClass.getSimpleName}\n")
     sb.toString
 
+  /** Predict with integer token indices (when first layer is Embedding). */
+  def predictInt(tokens: Array[Array[Int]]): Try[Array[Float]] =
+    Try {
+      val indArray = Nd4j.create(tokens.map(_.map(_.toFloat)))
+      val output = underlying.output(indArray)
+      val total = output.length().toInt
+      val arr = new Array[Float](total)
+      for i <- arr.indices do arr(i) = output.getFloat(i.toLong)
+      arr
+    }
+
+  /** Train with integer token indices (when first layer is Embedding). */
+  def fitInt(tokens: Array[Array[Int]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
+    Try {
+      val ds = new DataSet(Nd4j.create(tokens.map(_.map(_.toFloat))), Nd4j.create(labels.map(Array(_))))
+      for _ <- 1 to epochs do underlying.fit(ds)
+      FitResult(underlying.score(ds), epochs)
+    }
+
 object ZModel:
 
   /** UNIFIED: create a model from architecture. Compiles + wraps internally. */
