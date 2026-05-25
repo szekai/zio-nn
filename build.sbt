@@ -75,10 +75,25 @@ lazy val dl4j = project
     )
     )
 
+// ── DL4J Embeddings: Word2Vec training + pre-trained vector loading ──
+lazy val embeddings = project
+  .in(file("embeddings"))
+  .dependsOn(core, dl4j)
+  .settings(
+    name := "zio-nn-dl4j-embeddings",
+    libraryDependencies ++= Seq(
+      "dev.zio"             %% "zio"                    % zioV,
+      "dev.zio"             %% "zio-streams"            % zioV,
+      "org.deeplearning4j"   % "deeplearning4j-nlp"     % dl4jV,
+      "dev.zio"             %% "zio-test"               % zioV % Test,
+      "dev.zio"             %% "zio-test-sbt"           % zioV % Test
+    )
+  )
+
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(core, djl, dl4j)
+  .aggregate(core, djl, dl4j, embeddings)
   .settings(
     name := "zio-nn",
     publish / skip := true
