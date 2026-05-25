@@ -34,7 +34,7 @@ model.close()
 
 ```scala
 // sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.7.2"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.8.0"  // or zio-nn-dl4j
 ```
 
 ## Quick Start
@@ -373,7 +373,7 @@ libraryDependencies += "com.microsoft.onnxruntime" % "onnxruntime" % "1.19.2"
 
 ---
 
-## Word2Vec Embeddings (v0.7.2)
+## Word2Vec Embeddings (v0.8.0)
 
 Load pre-trained vectors and use them as the first layer in your model:
 

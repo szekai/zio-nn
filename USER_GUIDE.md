@@ -325,8 +325,8 @@ val ind: INDArray = features.toINDArray  // unified → native
 Change one line in `build.sbt` — zero code changes:
 
 ```scala
-"io.github.szekai" %% "zio-nn-djl"  % "0.7.2"  // ← swap
-"io.github.szekai" %% "zio-nn-dl4j" % "0.7.2"  // ← zero code changes
+"io.github.szekai" %% "zio-nn-djl"  % "0.8.0"  // ← swap
+"io.github.szekai" %% "zio-nn-dl4j" % "0.8.0"  // ← zero code changes
 ```
 
 ## Choosing a Backend
