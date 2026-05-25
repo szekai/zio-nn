@@ -3,7 +3,7 @@ import zio.*
 
 object ConfigLoader:
   def fromHocon(path: String): Task[ModelDef] =
-    ZIO.fail(new UnsupportedOperationException("HOCON config temporarily disabled while AdvancedLayerDef is being stabilized. Use the Scala DSL."))
+    ZIO.fail(new UnsupportedOperationException("HOCON config temporarily disabled while AnyLayer/AdvancedLayerDef stabilizes. Use the Scala DSL."))
   def fromHoconWithTraining(path: String): Task[(ModelDef, Option[TrainingParams])] =
     ZIO.fail(new UnsupportedOperationException("HOCON config temporarily disabled."))
   def fromString(hocon: String, path: String = "model"): Task[ModelDef] =

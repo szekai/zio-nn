@@ -158,7 +158,10 @@ Sequential(7)(
 | Adam / SGD / RMSprop | ✅ | ✅ |
 | Sequential models | ✅ | ✅ |
 | Save / Load | ✅ | ✅ |
-| Embedding | ✅ | ⚠️ escape hatch |
+| Embedding | ✅ | ✅ |
+| GRU | ❌ (use LSTM or DJL backend) | ✅ |
+| BiDirectional (LSTM/GRU) | ✅ (LSTM only) | ✅ |
+| MultiHeadAttention | ✅ | ✅ |
 
 ### Escape Hatches (framework-specific)
 
