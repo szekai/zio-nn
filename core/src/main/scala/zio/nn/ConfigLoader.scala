@@ -3,19 +3,27 @@ import zio.*
 import scala.jdk.CollectionConverters.*
 
 object ConfigLoader:
+  private def parseActivation(s: String): ActivationFn =
+    ActivationFn.values.find(_.toString.equalsIgnoreCase(s))
+      .getOrElse(throw IllegalArgumentException(s"Unknown activation: $s (valid: ${ActivationFn.values.mkString(", ")})"))
+
+  private def parseLoss(s: String): LossFn =
+    LossFn.values.find(_.toString.equalsIgnoreCase(s))
+      .getOrElse(throw IllegalArgumentException(s"Unknown loss: $s (valid: ${LossFn.values.mkString(", ")})"))
+
   private def parseLayer(conf: com.typesafe.config.Config): LayerDef =
     conf.getString("type") match
       case "lstm" => LayerDef.LSTM(-1,
         conf.getInt("n-out"),
-        ActivationFn.valueOf(conf.getString("activation").capitalize),
+        parseActivation(conf.getString("activation")),
         if conf.hasPath("dropout") then conf.getDouble("dropout") else 0.0)
       case "dense" => LayerDef.Dense(-1,
         conf.getInt("n-out"),
-        ActivationFn.valueOf(conf.getString("activation").capitalize))
+        parseActivation(conf.getString("activation")))
       case "output" => LayerDef.Output(-1,
         conf.getInt("n-out"),
-        if conf.hasPath("loss") then LossFn.valueOf(conf.getString("loss")) else LossFn.MSE,
-        if conf.hasPath("activation") then ActivationFn.valueOf(conf.getString("activation").capitalize)
+        if conf.hasPath("loss") then parseLoss(conf.getString("loss")) else LossFn.MSE,
+        if conf.hasPath("activation") then parseActivation(conf.getString("activation"))
         else ActivationFn.Identity)
       case "batchnorm" => LayerDef.BatchNorm(-1)
       case "dropout" => LayerDef.Dropout(conf.getDouble("rate"))
