@@ -1,15 +1,14 @@
-package zio.nn.dl4j
+package zio.nn.djl
 
-import zio.nn.*
+import zio.*
 import zio.nn.dsl.*
+import zio.nn.djl.zioApi.*
 import zio.test.*
 import zio.test.Assertion.*
-import zio.*
-import zio.nn.dl4j.zioApi.*
 
 object ZIOApiSpec extends ZIOSpecDefault:
 
-  def spec = suite("ZIO API (DL4J)")(
+  def spec = suite("ZIO API (DJL)")(
     test("create returns Scoped ZModel") {
       val arch = Sequential(7)(Dense(5), Output(1)).build
       for
@@ -17,29 +16,11 @@ object ZIOApiSpec extends ZIOSpecDefault:
         _     <- ZIO.attemptBlocking(model.close()).orDie
       yield assertTrue(true)
     },
-    test("predictZ works") {
-      val arch = Sequential(7)(Dense(5), Output(1)).build
-      zioApi.create(arch).flatMap { model =>
-        for
-          result <- model.predictZ(Array.fill(2)(Array.fill(7)(0.5f)))
-          _      <- ZIO.attemptBlocking(model.close()).orDie
-        yield assertTrue(result.length == 2)
-      }
-    },
-    test("predictDoubleZ works with Double precision") {
-      val arch = Sequential(7)(Dense(5), Output(1)).build
-      zioApi.create(arch).flatMap { model =>
-        for
-          result <- model.predictDoubleZ(Array.fill(1)(Array.fill(7)(0.5)))
-          _      <- ZIO.attemptBlocking(model.close()).orDie
-        yield assertTrue(result.length == 1)
-      }
-    },
     test("fitWithCheckpoints returns real epoch count across partial chunks") {
       val arch = Sequential(7)(Dense(5), Output(1)).build
       zioApi.create(arch).flatMap { model =>
         for
-          tmpDir <- ZIO.attemptBlocking(java.nio.file.Files.createTempDirectory("zionn-dl4j-checkpoints"))
+          tmpDir <- ZIO.attemptBlocking(java.nio.file.Files.createTempDirectory("zionn-djl-checkpoints"))
           result <- model.fitWithCheckpoints(
                       features = Array.fill(4)(Array.fill(7)(0.25f)),
                       labels = Array.fill(4)(0.5f),

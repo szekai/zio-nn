@@ -7,6 +7,28 @@ import java.io.File
 
 object zioApi:
 
+  private def checkpointLoop(
+    fitChunk: Int => ZIO[Any, Throwable, FitResult],
+    saveCheckpoint: Int => ZIO[Any, Throwable, Unit],
+    epochs: Int,
+    saveEvery: Int
+  ): ZIO[Any, Throwable, FitResult] =
+    if saveEvery <= 0 then
+      ZIO.fail(IllegalArgumentException(s"saveEvery must be > 0, got $saveEvery"))
+    else
+      def loop(completed: Int, lastResult: Option[FitResult]): ZIO[Any, Throwable, FitResult] =
+        val remaining = epochs - completed
+        if remaining <= 0 then ZIO.succeed(lastResult.getOrElse(FitResult(Double.NaN, 0)))
+        else
+          val chunk = math.min(saveEvery, remaining)
+          fitChunk(chunk).flatMap { result =>
+            val aggregate = result.copy(epochs = completed + result.epochs)
+            saveCheckpoint(aggregate.epochs) *>
+              ZIO.logInfo(s"Checkpoint saved at epoch ${aggregate.epochs}") *>
+              loop(aggregate.epochs, Some(aggregate))
+          }
+      loop(0, None)
+
   extension (model: ZModel)
     def predictZ(features: Array[Array[Float]]): Task[Array[Float]] =
       ZIO.attemptBlocking(model.predict(features).get)
@@ -33,14 +55,14 @@ object zioApi:
       fitZ(features, labels, epochs, lr).timed.flatMap((duration, result) => ZIO.logInfo(s"fit($epochs epochs): ${duration.toMillis}ms, loss=${result.loss}").as(result))
 
     def fitWithCheckpoints(features: Array[Array[Float]], labels: Array[Float], epochs: Int, saveEvery: Int, checkpointPath: String, lr: Float = 0.001f): ZIO[Any, Throwable, FitResult] =
-      ZIO.suspendSucceed {
-        def loop(epoch: Int): ZIO[Any, Throwable, FitResult] =
-          if epoch > epochs then ZIO.succeed(FitResult(Double.NaN, 0))
-          else fitZ(features, labels, saveEvery, lr) *>
-            ZIO.attemptBlocking(model.save(new File(s"$checkpointPath-epoch$epoch"))).ignore *>
-            ZIO.logInfo(s"Checkpoint saved at epoch $epoch") *> loop(epoch + saveEvery)
-        loop(1)
-      }
+      if epochs <= 0 then fitZ(features, labels, 0, lr)
+      else
+        checkpointLoop(
+          fitChunk = fitZ(features, labels, _, lr),
+          saveCheckpoint = epoch => ZIO.attemptBlocking(model.save(new File(s"$checkpointPath-epoch$epoch")).get),
+          epochs = epochs,
+          saveEvery = saveEvery
+        )
 
   def create(arch: zio.nn.ModelDef): ZIO[Scope, Throwable, ZModel] =
     ZIO.acquireRelease(ZIO.attemptBlocking(ZModel.create(arch)))(m => ZIO.attemptBlocking(m.close()).orDie)

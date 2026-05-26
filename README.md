@@ -452,7 +452,7 @@ for
 yield e
 ```
 
-Ops: `create`, `create1D`, `createDouble`, `createDouble1D`, `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `toFloatArray`, `toDoubleArray`, `shape`
+Ops: `create`, `create1D`, `createDouble`, `createDouble1D`, `zeros`, `ones`, `fill`, `eye`, `copy`, `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `abs`, `square`, `sign`, `log`, `sigmoid`, `maximum`, `diagonal`, `get`, `slice`, `concatenate`, `gather`, `unique`, `countZeros`, `std`, `norm`, `solve`, `lessThanOrEqual`, `not`, `where`, `toFloatArray`, `toDoubleArray`, `shape`
 
 ## Conv2D / CNN (v0.5.3)
 
