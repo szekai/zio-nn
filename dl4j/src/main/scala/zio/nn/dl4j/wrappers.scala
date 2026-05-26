@@ -34,6 +34,26 @@ class ZModel(val underlying: MultiLayerNetwork):
       FitResult(underlying.score(ds), epochs)
     }
 
+  def fit(features: Array[Array[Float]], labels: Array[Array[Float]], epochs: Int, lr: Float): Try[FitResult] =
+    Try {
+      val ds = new DataSet(Nd4j.create(features), Nd4j.create(labels))
+      for _ <- 1 to epochs do underlying.fit(ds)
+      FitResult(underlying.score(ds), epochs)
+    }
+
+  def fit(features: Array[Array[Float]], labels: Array[Int], epochs: Int, lr: Float): Try[FitResult] =
+    Try {
+      val numClasses = labels.max + 1
+      val oneHot = labels.map { label =>
+        val row = new Array[Float](numClasses)
+        row(label) = 1.0f
+        row
+      }
+      val ds = new DataSet(Nd4j.create(features), Nd4j.create(oneHot))
+      for _ <- 1 to epochs do underlying.fit(ds)
+      FitResult(underlying.score(ds), epochs)
+    }
+
   /** ESCAPE HATCH: raw DL4J prediction with INDArray. */
   def predictRaw(input: INDArray): Try[INDArray] =
     Try(underlying.output(input))

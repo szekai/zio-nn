@@ -76,6 +76,10 @@ object Word2Vec:
     Word2VecModel(vecs)
   }
 
-  def loadGloVe(path: Path): Try[org.deeplearning4j.models.embeddings.wordvectors.WordVectors] = Try {
-    WordVectorSerializer.loadTxtVectors(path.toFile)
+  def loadGloVe(path: Path): Try[Word2VecModel] = Try {
+    val vecs = WordVectorSerializer.loadTxtVectors(path.toFile)
+    vecs match
+      case sv: SequenceVectors[?] => Word2VecModel(sv.asInstanceOf[SequenceVectors[VocabWord]])
+      case _ => throw new UnsupportedOperationException(
+        s"GloVe loader returned ${vecs.getClass.getName}, expected SequenceVectors[VocabWord].")
   }

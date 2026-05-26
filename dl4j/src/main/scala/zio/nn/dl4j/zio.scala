@@ -36,6 +36,12 @@ object zioApi:
     def fitZ(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Task[FitResult] =
       ZIO.attemptBlocking(model.fit(features, labels, epochs, lr).get)
 
+    def fitZ(features: Array[Array[Float]], labels: Array[Array[Float]], epochs: Int, lr: Float): Task[FitResult] =
+      ZIO.attemptBlocking(model.fit(features, labels, epochs, lr).get)
+
+    def fitZ(features: Array[Array[Float]], labels: Array[Int], epochs: Int, lr: Float): Task[FitResult] =
+      ZIO.attemptBlocking(model.fit(features, labels, epochs, lr).get)
+
     def predictDoubleZ(features: Array[Array[Double]]): Task[Array[Double]] =
       ZIO.attemptBlocking { val f = features.map(_.map(_.toFloat)); model.predict(f).get.map(_.toDouble) }
 

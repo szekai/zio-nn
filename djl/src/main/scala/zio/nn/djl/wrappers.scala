@@ -20,7 +20,7 @@ import scala.util.Try
 // ═══════════════════════════════════════════════
 //  ZModel — unified API across backends
 // ═══════════════════════════════════════════════
-class ZModel(val underlying: Model, ndm: NDManager):
+class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
 
   /** UNIFIED: predict from float arrays. Works identically on both backends. */
   def predict(features: Array[Array[Float]]): Try[Array[Float]] =
@@ -41,7 +41,7 @@ class ZModel(val underlying: Model, ndm: NDManager):
   def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
     Try {
       val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
-      val config = new DefaultTrainingConfig(Loss.l2Loss())
+      val config = new DefaultTrainingConfig(selectLoss(lossFn))
       config.optOptimizer(adam)
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
@@ -56,6 +56,55 @@ class ZModel(val underlying: Model, ndm: NDManager):
         FitResult(loss, epochs)
       finally trainer.close()
     }
+
+  def fit(features: Array[Array[Float]], labels: Array[Array[Float]], epochs: Int, lr: Float): Try[FitResult] =
+    Try {
+      val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
+      val config = new DefaultTrainingConfig(selectLoss(lossFn))
+      config.optOptimizer(adam)
+      config.optInitializer(new XavierInitializer(), "weight")
+      val trainer = underlying.newTrainer(config)
+      try
+        trainer.initialize(new Shape(1, features.head.length.toLong))
+        for _ <- 1 to epochs do
+          val dataArr = ndm.create(features); val labelArr = ndm.create(labels)
+          val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
+            features.length, null, null, features.length.toLong, 0L, java.util.Collections.emptyList[Any]())
+          ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
+        val loss = trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(loss, epochs)
+      finally trainer.close()
+    }
+
+  def fit(features: Array[Array[Float]], labels: Array[Int], epochs: Int, lr: Float): Try[FitResult] =
+    Try {
+      val numClasses = labels.max + 1
+      val oneHot = labels.map { label =>
+        val row = new Array[Float](numClasses); row(label) = 1.0f; row
+      }
+      val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
+      val config = new DefaultTrainingConfig(selectLoss(lossFn))
+      config.optOptimizer(adam)
+      config.optInitializer(new XavierInitializer(), "weight")
+      val trainer = underlying.newTrainer(config)
+      try
+        trainer.initialize(new Shape(1, features.head.length.toLong))
+        for _ <- 1 to epochs do
+          val dataArr = ndm.create(features); val labelArr = ndm.create(oneHot)
+          val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
+            features.length, null, null, features.length.toLong, 0L, java.util.Collections.emptyList[Any]())
+          ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
+        val loss = trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(loss, epochs)
+      finally trainer.close()
+    }
+
+  private def selectLoss(lossFn: LossFn): Loss = lossFn match
+    case LossFn.MSE                    => Loss.l2Loss()
+    case LossFn.MAE                    => Loss.l1Loss()
+    case LossFn.BinaryCrossEntropy     => Loss.sigmoidBinaryCrossEntropyLoss()
+    case LossFn.CategoricalCrossEntropy => Loss.softmaxCrossEntropyLoss()
+    case _                             => Loss.l2Loss()
 
   /** ESCAPE HATCH: raw DJL prediction with NDList. */
   def predictRaw(input: NDList): Try[NDList] = Try {
@@ -94,7 +143,7 @@ class ZModel(val underlying: Model, ndm: NDManager):
   def fitInt(tokens: Array[Array[Int]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
     Try {
       val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
-      val config = new DefaultTrainingConfig(Loss.l2Loss())
+      val config = new DefaultTrainingConfig(selectLoss(lossFn))
       config.optOptimizer(adam)
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
@@ -130,21 +179,27 @@ object ZModel:
     val ndm = NDManager.newBaseManager()
     val m = Model.newInstance(name, ndm.getDevice(), engine)
     m.setBlock(block)
-    // Initialize parameters via a dummy forward pass
+    val lossFn = extractLoss(arch)
     val inputSize = arch match
       case ModelDef.Sequential(s) => s.inputSize
       case _ => 1
     val config = new DefaultTrainingConfig(Loss.l2Loss())
     val trainer = m.newTrainer(config)
     try trainer.initialize(new Shape(1, inputSize)) finally trainer.close()
-    ZModel(m, ndm)
+    ZModel(m, ndm, lossFn)
   }
+
+  private def extractLoss(arch: ModelDef): LossFn = arch match
+    case ModelDef.Sequential(s) =>
+      s.layers.collectFirst { case AnyLayer.Standard(LayerDef.Output(_, _, loss, _)) => loss }.getOrElse(LossFn.MSE)
+    case ModelDef.Functional(f) =>
+      f.layers.collectFirst { case (_, LayerDef.Output(_, _, loss, _)) => loss }.getOrElse(LossFn.MSE)
 
   def load(path: Path, name: String = "model", engine: String = "PyTorch"): Try[ZModel] = Try {
     val ndm = NDManager.newBaseManager()
     val m = Model.newInstance(name, ndm.getDevice(), engine)
     m.load(path, name)
-    ZModel(m, ndm)
+    ZModel(m, ndm, LossFn.MSE)
   }
 
 // ═══════════════════════════════════════════════

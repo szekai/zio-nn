@@ -35,5 +35,22 @@ object WrappersSpec extends ZIOSpecDefault:
       val arch = ModelDef.Sequential(SequentialDef(7,
         List(LayerDef.Dense(7, 5, ActivationFn.ReLU), LayerDef.Output(5, 1, LossFn.MSE))))
       assertTrue(ZModel.create(arch).underlying.isInstanceOf[MultiLayerNetwork])
+    },
+    test("fit with one-hot labels (classification) succeeds") {
+      val arch = dsl.Sequential(4)(dsl.Dense(8, dsl.ReLU), dsl.Output(3, dsl.MAE, dsl.Softmax)).build
+      val model = ZModel.create(arch)
+      val feats = Array.fill(10)(Array.fill(4)(scala.util.Random.nextFloat()))
+      val labels = Array.fill(10)(Array.fill(3)(0.0f))
+      labels.foreach { row => row(scala.util.Random.nextInt(3)) = 1.0f }
+      val result = model.fit(feats, labels, 2, 0.001f)
+      assertTrue(result.isSuccess)
+    },
+    test("fit with class indices (classification) succeeds") {
+      val arch = dsl.Sequential(4)(dsl.Dense(8, dsl.ReLU), dsl.Output(3, dsl.MAE, dsl.Softmax)).build
+      val model = ZModel.create(arch)
+      val feats = Array.fill(10)(Array.fill(4)(scala.util.Random.nextFloat()))
+      val labels = Array.fill(10)(scala.util.Random.nextInt(3))
+      val result = model.fit(feats, labels, 2, 0.001f)
+      assertTrue(result.isSuccess)
     }
   )

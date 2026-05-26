@@ -58,5 +58,15 @@ object EdgeCaseSpec extends ZIOSpecDefault:
       val model = ZModel.create(arch)
       val result = model.predict(Array(Array.fill(7)(0.5f)))
       assertTrue(result.isSuccess && result.get.length == 1)
+    },
+    test("classification: fit with class indices then predict") {
+      val arch = dsl.Sequential(4)(dsl.Dense(8, dsl.ReLU), dsl.Output(3, dsl.MAE, dsl.Softmax))
+        .withOptimizer(OptimizerDef.SGD(1e-4)).build
+      val model = ZModel.create(arch)
+      val feats = Array.fill(6)(Array.fill(4)(0.5f))
+      val classIndices = Array(0, 0, 1, 1, 2, 2)
+      val fitResult = model.fit(feats, classIndices, 3, 0.001f)
+      val pred = model.predict(feats)
+      assertTrue(fitResult.isSuccess && pred.isSuccess && pred.get.length == 18)
     }
   )

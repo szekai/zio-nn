@@ -109,5 +109,14 @@ object DSLSpec extends ZIOSpecDefault:
         val arch = dsl.Sequential(0)(dsl.Output(1)).build
         assertTrue(true)
       }
+    ),
+    suite("Wildcard import")(
+      test("import zio.nn.dsl.* brings constructors into scope") {
+        import zio.nn.dsl.*
+        val arch = Sequential(7)(Dense(10), Output(1)).build
+        arch match
+          case ModelDef.Sequential(s) => assertTrue(s.layers.size == 2)
+          case _ => assertTrue(false)
+      }
     )
   )
