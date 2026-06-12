@@ -29,6 +29,7 @@ object ConfigLoader:
       case "dropout" => LayerDef.Dropout(conf.getDouble("rate"))
       case "embedding" => LayerDef.Embedding(
         conf.getInt("vocab-size"), conf.getInt("embedding-dim"), None)
+      case "layernorm" => LayerDef.LayerNorm(-1)
       case other => throw IllegalArgumentException(s"Unknown layer type: $other")
 
   private def parseModel(conf: com.typesafe.config.Config): ModelDef =

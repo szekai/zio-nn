@@ -30,15 +30,17 @@ class ZModel(val underlying: MultiLayerNetwork):
   def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
     Try {
       val ds = new DataSet(Nd4j.create(features), Nd4j.create(labels.map(Array(_))))
-      for _ <- 1 to epochs do underlying.fit(ds)
-      FitResult(underlying.score(ds), epochs)
+      val history = scala.collection.mutable.ListBuffer[Double]()
+      for _ <- 1 to epochs do { underlying.fit(ds); history += underlying.score(ds) }
+      FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
     }
 
   def fit(features: Array[Array[Float]], labels: Array[Array[Float]], epochs: Int, lr: Float): Try[FitResult] =
     Try {
       val ds = new DataSet(Nd4j.create(features), Nd4j.create(labels))
-      for _ <- 1 to epochs do underlying.fit(ds)
-      FitResult(underlying.score(ds), epochs)
+      val history = scala.collection.mutable.ListBuffer[Double]()
+      for _ <- 1 to epochs do { underlying.fit(ds); history += underlying.score(ds) }
+      FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
     }
 
   def fit(features: Array[Array[Float]], labels: Array[Int], epochs: Int, lr: Float): Try[FitResult] =
@@ -50,8 +52,9 @@ class ZModel(val underlying: MultiLayerNetwork):
         row
       }
       val ds = new DataSet(Nd4j.create(features), Nd4j.create(oneHot))
-      for _ <- 1 to epochs do underlying.fit(ds)
-      FitResult(underlying.score(ds), epochs)
+      val history = scala.collection.mutable.ListBuffer[Double]()
+      for _ <- 1 to epochs do { underlying.fit(ds); history += underlying.score(ds) }
+      FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
     }
 
   /** ESCAPE HATCH: raw DL4J prediction with INDArray. */
@@ -84,8 +87,9 @@ class ZModel(val underlying: MultiLayerNetwork):
   def fitInt(tokens: Array[Array[Int]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
     Try {
       val ds = new DataSet(Nd4j.create(tokens.map(_.map(_.toFloat))), Nd4j.create(labels.map(Array(_))))
-      for _ <- 1 to epochs do underlying.fit(ds)
-      FitResult(underlying.score(ds), epochs)
+      val history = scala.collection.mutable.ListBuffer[Double]()
+      for _ <- 1 to epochs do { underlying.fit(ds); history += underlying.score(ds) }
+      FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
     }
 
 object ZModel:

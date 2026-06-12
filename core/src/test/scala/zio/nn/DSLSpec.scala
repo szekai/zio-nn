@@ -110,6 +110,42 @@ object DSLSpec extends ZIOSpecDefault:
         assertTrue(true)
       }
     ),
+    suite("LayerNorm and Transformer")(
+      test("LayerNorm compiles in Sequential") {
+        val arch = dsl.Sequential(7)(
+          dsl.Dense(10, ActivationFn.ReLU),
+          dsl.LayerNorm,
+          dsl.Output(1)
+        ).build
+        arch match
+          case ModelDef.Sequential(s) => assertTrue(s.layers.size == 3)
+          case _ => assertTrue(false)
+      },
+      test("TransformerEncoder compiles in Sequential") {
+        val arch = dsl.Sequential(128)(
+          dsl.TransformerEncoder(128, 4, 512, numLayers = 2, dropout = 0.1),
+          dsl.Output(1)
+        ).build
+        arch match
+          case ModelDef.Sequential(s) => assertTrue(s.layers.size == 2)
+          case _ => assertTrue(false)
+      },
+      test("TransformerEncoder shape propagation is correct") {
+        val arch = dsl.Sequential(512)(
+          dsl.TransformerEncoder(512, 8, 2048),
+          dsl.Dense(256),
+          dsl.Output(1)
+        ).build
+        arch match
+          case ModelDef.Sequential(s) =>
+            // Dense should receive dim=512 as input from TransformerEncoder
+            val dense = s.layers(1)
+            dense match
+              case AnyLayer.Standard(LayerDef.Dense(nIn, 256, _)) => assertTrue(nIn == 512)
+              case _ => assertTrue(false)
+          case _ => assertTrue(false)
+      }
+    ),
     suite("Wildcard import")(
       test("import zio.nn.dsl.* brings constructors into scope") {
         import zio.nn.dsl.*

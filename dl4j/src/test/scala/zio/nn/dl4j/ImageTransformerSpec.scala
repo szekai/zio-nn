@@ -9,8 +9,9 @@ import java.awt.image.BufferedImage
 
 object ImageTransformerSpec extends ZIOSpecDefault:
 
-  private def createTestImageBytes(width: Int, height: Int): Array[Byte] =
-    val img = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+  private def createTestImageBytes(width: Int, height: Int, gray: Boolean = false): Array[Byte] =
+    val imgType = if gray then BufferedImage.TYPE_BYTE_GRAY else BufferedImage.TYPE_INT_RGB
+    val img = BufferedImage(width, height, imgType)
     val g = img.createGraphics
     g.setColor(java.awt.Color.WHITE)
     g.fillRect(0, 0, width, height)
@@ -43,5 +44,22 @@ object ImageTransformerSpec extends ZIOSpecDefault:
       val bytes = createTestImageBytes(20, 20)
       val result = transformer.transform(bytes)
       assertTrue(result.isSuccess)
+    },
+    test("grayscale image produces single-channel output") {
+      val pipeline = ImagePipeline(ImageTransformDef.Resize(28, 28))
+      val transformer = ImageTransformer(pipeline)
+      val bytes = createTestImageBytes(14, 14, gray = true)
+      val result = transformer.transform(bytes).get
+      assertTrue(result.length == 28, result.head.length == 28)
+    },
+    test("grayscale with single-channel normalize") {
+      val pipeline = ImagePipeline(
+        ImageTransformDef.Resize(28, 28),
+        ImageTransformDef.Normalize(Array(0.1307f), Array(0.3081f))
+      )
+      val transformer = ImageTransformer(pipeline)
+      val bytes = createTestImageBytes(14, 14, gray = true)
+      val result = transformer.transform(bytes)
+      assertTrue(result.isSuccess, result.get.length == 28, result.get.head.length == 28)
     }
   )

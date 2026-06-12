@@ -240,7 +240,7 @@ GRU:   z_t = σ(W_z·[h_{t-1},x_t]+b_z)  r_t = σ(W_r·[h_{t-1},x_t]+b_r)
 ```scala
 import zio.nn.dl4j.embeddings.*
 
-// Load pre-trained vectors
+// ── Load pre-trained vectors ──
 val w2v = Word2Vec.loadGoogleNewsVectors(Path.of("vectors.bin")).get
 
 // Use as first layer with pre-trained weights
@@ -259,6 +259,23 @@ model.fitInt(tokens, labels, epochs = 5) // Try[FitResult]
 // Word2Vec queries
 w2v.similarity("day", "night")           // Task[Double]
 w2v.wordsNearest("king", 10)             // Task[List[String]]
+
+// ── Train from scratch ──
+val corpus = ZStream("the cat sat on the mat", "the dog sat on the log")
+ZIO.scoped {
+  Word2Vec.train(corpus, Config(dimensions = 50, epochs = 3)).flatMap { w2v =>
+    w2v.similarity("cat", "mat")
+  }
+}
+
+// ── Tokenizer from Word2Vec vocabulary ──
+val tok = w2v.toTokenizer()
+val ids = tok.encode("hello world").get.tokenIds
+model.fitInt(Array(ids), labels, epochs = 5)
+
+// ── Escape hatch for legacy DL4J pipelines ──
+val raw: WordVectors = w2v.vectors
+val iter = new DataSetIteratorWord2Vec(dataDir, raw, batch, trunc, train)
 ```
 
 DJL users: export PyTorch `nn.Embedding` as ONNX, load via `ZModel.load(path, engine="OnnxRuntime")`.

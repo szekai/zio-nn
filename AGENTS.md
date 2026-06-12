@@ -10,7 +10,7 @@ Write-once neural network library for ZIO. Swap DJL ↔ DL4J by changing one JAR
 | core/     | 4 (ModelArchitecture, dsl, ConfigLoader, Preprocessing) | 2 files, 22 tests | HIGH | ✅ |
 | djl/      | 8 (Backend, implicits, scope, tensor/, wrappers, zio, ZTokenizer, ImageTransformer) | 6 files, 20 tests | HIGH | ✅ |
 | dl4j/     | 7 (Backend, implicits, tensor/, wrappers, zio, ZTokenizer, ImageTransformer) | 8 files, 37 tests | HIGH | ✅ |
-| embeddings/ | 1 (Word2Vec) | 0 files, 0 tests | MEDIUM | ❌ |
+| embeddings/ | 1 (Word2Vec) | 1 file, 7 tests | HIGH | ✅ |
 | macros/   | 0 | 0 | LOW | ❌ |
 | project/  | 0 (SBT config only) | 0 | LOW | ❌ |
 

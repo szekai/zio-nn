@@ -33,5 +33,18 @@ object BackendSpec extends ZIOSpecDefault:
         val arch = ModelDef.Sequential(SequentialDef(7, List(LayerDef.Dense(7, 5, act), LayerDef.Output(5, 1, LossFn.MSE))))
         Backend.compile(arch) != null
       })
+    },
+    test("LayerNorm compiles on DJL") {
+      val arch = ModelDef.Sequential(SequentialDef(64,
+        List(LayerDef.Dense(64, 64, ActivationFn.ReLU), LayerDef.LayerNorm(64), LayerDef.Output(64, 1, LossFn.MSE))))
+      assertTrue(Backend.compile(arch) != null)
+    },
+    test("TransformerEncoder compiles on DJL") {
+      val arch = ModelDef.Sequential(SequentialDef(
+        inputSize = 128,
+        layers = List(
+          AnyLayer.Advanced(AdvancedLayerDef.TransformerEncoder(128, 4, 512, 2, 0.1)),
+          AnyLayer.Standard(LayerDef.Output(128, 1)))))
+      assertTrue(Backend.compile(arch) != null)
     }
   )

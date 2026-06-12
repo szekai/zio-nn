@@ -111,12 +111,16 @@ val loaded = ZModel.load(Path.of("models/my-model"))
 | `BatchNorm` | `LayerDef.BatchNorm(nIn=auto)` |
 | `Dropout(0.3)` | `LayerDef.Dropout(0.3)` |
 | `Embedding(10000, 300)` | `LayerDef.Embedding(vocabSize=10000, embeddingDim=300)` |
+| `LayerNorm` | `LayerDef.LayerNorm(nIn=auto)` |
+| `TransformerEncoder(dim, heads, ffDim)` | `AdvancedLayerDef.TransformerEncoder(dim, numHeads, ffDim)` |
 | `Conv2D(32, (3,3))` | `LayerDef.Conv2D(nIn=auto, filters=32, kernel=(3,3), ReLU)` |
 | `MaxPool2D((2,2))` | `LayerDef.MaxPool2D(poolSize=(2,2))` |
 | `Flatten` | `LayerDef.Flatten` |
 | `GRU(64, Tanh)` | `AdvancedLayerDef.GRU(nIn=auto, nOut=64, Tanh)` (DJL only) |
 | `BiDirectional(LSTM(64))` | `AdvancedLayerDef.BiDirectional(LSTM, nIn=auto, nOut=64, Tanh)` |
 | `MultiHeadAttention(300, 8)` | `AdvancedLayerDef.MultiHeadAttention(embeddingDim=300, numHeads=8)` |
+| `LayerNorm` | `LayerDef.LayerNorm(nIn=auto)` |
+| `TransformerEncoder(512, 8, 2048)` | `AdvancedLayerDef.TransformerEncoder(dim=512, numHeads=8, ffDim=2048)` |
 
 Input sizes auto-propagate through the chain: `Sequential(7)(LSTM(64), Dense(32), Output(1))` — the compiler resolves 7→64, 64→32, 32→1 automatically.
 
@@ -171,6 +175,8 @@ Sequential(7)(
 | GRU | ✅ | ✅ |
 | BiDirectional (LSTM/GRU) | ✅ | ✅ |
 | MultiHeadAttention | ✅ | ✅ |
+| LayerNorm | ✅ (native) | ❌ (DL4J 1.0.0-M2.1 lacks LayerNorm) |
+| TransformerEncoder | ✅ (native block) | ❌ (use DJL or compose manually) |
 
 ### Tokenization
 
@@ -398,18 +404,17 @@ libraryDependencies += "com.microsoft.onnxruntime" % "onnxruntime" % "1.19.2"
 
 ---
 
-## Word2Vec Embeddings (v0.8.0)
+## Word2Vec Embeddings (v0.9.0)
 
-Load pre-trained vectors and use them as the first layer in your model:
+Load pre-trained vectors, train your own, or tokenize text — all feeding into `predictInt` / `fitInt`:
 
 ```scala
 import zio.nn.*, zio.nn.dsl.*
 import zio.nn.dl4j.embeddings.*
 
-// Load Google News Word2Vec
+// ── Path A: Load pre-trained vectors and use as first layer ──
 val w2v = Word2Vec.loadGoogleNewsVectors(Path.of("GoogleNews-vectors-negative300.bin")).get
 
-// Use as first layer with pre-trained weights
 val arch = Sequential(1)(
   w2v.toEmbeddingLayer(),    // vocabSize + dim + weights auto-detected
   LSTM(256, Tanh),
@@ -426,6 +431,24 @@ model.fitInt(tokens, labels, epochs=5)  // Try[FitResult]
 val sim  = w2v.similarity("day", "night")      // Task[Double]
 val near = w2v.wordsNearest("king", 10)         // Task[List[String]]
 
+// ── Path B: Train Word2Vec from scratch ──
+val corpus: ZStream[Any, Throwable, String] = ZStream(
+  "the cat sat on the mat", "the dog sat on the log")
+
+ZIO.scoped {
+  Word2Vec.train(corpus, Config(dimensions = 50, epochs = 3)).flatMap { w2v =>
+    w2v.similarity("cat", "mat")
+  }
+}
+
+// ── Path C: Create tokenizer from Word2Vec vocabulary ──
+val tok = w2v.toTokenizer()                  // ZTokenizer with Word2Vec vocab
+val ids = tok.encode("hello world").get.tokenIds  // Array[Int]
+model.fitInt(Array(ids), labels, epochs = 5)
+
+// ── Path D: Backward-compatible escape hatch ──
+val raw: WordVectors = w2v.vectors          // raw DL4J WordVectors for legacy pipelines
+
 // GloVe vectors (escape hatch)
 val glove = Word2Vec.loadGloVe(Path.of("glove.6B.300d.txt")).get
 // Convert to EmbeddingWeights manually, then use Embedding(vocabSize, dim, weights)
@@ -434,10 +457,13 @@ val glove = Word2Vec.loadGloVe(Path.of("glove.6B.300d.txt")).get
 | Method | Backend | Description |
 |--------|---------|-------------|
 | `Embedding(vocabSize, dim)` | DJL + DL4J | Randomly initialized embedding layer |
+| `Word2Vec.train(corpus, config)` | DL4J only | Train Word2Vec from text stream (SkipGram/CBOW) |
 | `Word2Vec.load(path)` | DL4J only | Load pre-trained SequenceVectors |
 | `Word2Vec.loadGloVe(path)` | DL4J only | Load GloVe .txt vectors (escape hatch) |
 | `Word2Vec.loadGoogleNewsVectors(path)` | DL4J only | Load Google News .bin vectors |
 | `toEmbeddingLayer()` | DL4J only | Convert vectors → LayerSpec.Embedding with weights |
+| `toTokenizer()` | DL4J only | ZTokenizer backed by Word2Vec vocabulary |
+| `vectors` | DL4J only | Expose raw `WordVectors` for legacy DL4J pipelines |
 | `similarity(w1, w2)` | DL4J only | Cosine similarity between two words |
 | `wordsNearest(w, n)` | DL4J only | Top-N most similar words |
 | `predictInt(tokens)` | DJL + DL4J | Predict from token-index input |
@@ -566,6 +592,117 @@ model.fitWithCheckpoints(
 val predictions = model.predictZ(features) @@
   Metric.timer("predict_ms").tagged("model", "lstm-v2")
 ```
+
+---
+
+## Advanced Training: Callbacks, Early Stopping, LR Scheduling (v0.9.0)
+
+ZIO-native training callbacks for per-epoch hooks, early stopping, and learning rate scheduling.
+
+### Training Callbacks
+
+```scala
+import zio.nn.*
+
+val logger = new TrainingCallback {
+  def onEvent(event: TrainingEvent) = event match
+    case TrainingEvent.EpochEnd(epoch, loss, ms) =>
+      ZIO.logInfo(s"Epoch $epoch: loss=$loss (${ms}ms)")
+    case TrainingEvent.TrainEnd(result) =>
+      ZIO.logInfo(s"Training complete: ${result.epochs} epochs, final loss=${result.loss}")
+    case _ => ZIO.unit
+}
+```
+
+### Early Stopping
+
+Stop training when validation loss plateaus:
+
+```scala
+val earlyStop = EarlyStopping(patience = 5, minDelta = 0.001)
+model.fitWithCallbacksZ(feats, labels, 100, callbacks = List(earlyStop))
+```
+
+### LR Scheduling
+
+Cosine annealing schedule — cycles between min and max LR:
+
+```scala
+val cosine = LRSchedule.cosine(minLr = 0.0001f, maxLr = 0.01f, cycleLength = 10)
+model.fitWithCallbacksZ(feats, labels, 100, lr = 0.01f, lrSchedule = cosine)
+```
+
+### Validation Split (DL4J)
+
+Automatic hold-out validation with early stopping:
+
+```scala
+model.fitWithValidationZ(feats, labels, 100, validationSplit = 0.2, patience = 5)
+```
+
+### Per-Epoch Loss History
+
+`fit()` now returns per-epoch loss history:
+
+```scala
+val result = model.fit(features, labels, 50).get
+result.lossHistory.length  // 50 — one loss per epoch
+result.loss                // final loss
+```
+
+### Built-in Callbacks
+
+| Feature | API | Description |
+|---------|-----|-------------|
+| Custom callback | `TrainingCallback.onEvent(event)` | Handle epoch/validation/train events |
+| Early stopping | `EarlyStopping(patience, minDelta)` | Stop on validation loss plateau |
+| LR schedule | `LRSchedule.cosine(min, max, cycleLen)` | Cosine annealing between bounds |
+| Fixed LR | `LRSchedule.fixed` | No LR change (default) |
+| Validation split | `fitWithValidationZ(feats, labels, epochs, split, patience)` | Auto split + early stopping |
+| Epoch tracking | `fit().lossHistory` | Per-epoch loss values |
+| Validation loss | `fit().validationLoss` | Final validation loss |
+
+---
+
+## Batch Data Loading: DataSetLoader (v0.9.0)
+
+ZIO Stream-based pipeline from files on disk → transform → batched arrays → `model.fitZ()`:
+
+```scala
+import zio.nn.*
+import java.nio.file.Path
+
+// Image classification — provide your backend's ImageTransformer
+import zio.nn.dl4j.ImageTransformer
+
+val pipeline = ImagePipeline(Resize(28, 28), Normalize(mean, std))
+DataSetLoader.fromImageDir(Path.of("data/mnist_png/training"), pipeline, batchSize = 64) {
+  (bytes, pl) => ImageTransformer(pl).transform(bytes)
+}.flatMap { loader =>
+  loader.batches.via(model.fitFlow(epochs = 1)).runCollect
+}
+
+// Text classification — provide your backend's tokenizer
+val tok = w2v.toTokenizer()
+DataSetLoader.fromTextDir(Path.of("data/imdb/train"), batchSize = 32) {
+  (text, _) => tok.encode(text).map(_.tokenIds)
+}.flatMap { loader =>
+  loader.batches.via(model.fitFlow).runCollect
+}
+```
+
+Key features:
+- **Backend-agnostic**: pass any transform function (ImageTransformer, ZTokenizer, or custom)
+- **Parallel file processing**: configurable `parallelism` factor
+- **Automatic batching**: configurable `batchSize`, last batch may be partial
+- **Label extraction**: `LabelExtractor.fromParentDir` maps directory names to class indices, or `LabelExtractor.constant` for fixed labels
+- **File discovery**: walks directories recursively, filters by extension
+
+| Method | Description |
+|--------|-------------|
+| `fromImageDir(root, pipeline, batchSize, parallelism)` | Discover image files, apply transform, batch |
+| `fromTextDir(root, batchSize, parallelism)` | Discover text files, tokenize, batch |
+| `fromFiles(root, extensions, labelExtr, batchSize, parallelism)` | Generic file loader |
 
 ---
 

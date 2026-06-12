@@ -28,12 +28,13 @@ lazy val core = project
   .settings(
     name := "zio-nn-core",
     libraryDependencies ++= Seq(
-      "dev.zio" %% "zio"     % zioV,
-      "dev.zio" %% "zio-config"          % "4.0.4",
-      "dev.zio" %% "zio-config-typesafe" % "4.0.4",
-      "dev.zio" %% "zio-config-magnolia" % "4.0.4",
-      "dev.zio" %% "zio-test" % zioV % Test,
-      "dev.zio" %% "zio-test-sbt" % zioV % Test
+      "dev.zio" %% "zio"                    % zioV,
+      "dev.zio" %% "zio-streams"            % zioV,
+      "dev.zio" %% "zio-config"             % "4.0.4",
+      "dev.zio" %% "zio-config-typesafe"    % "4.0.4",
+      "dev.zio" %% "zio-config-magnolia"    % "4.0.4",
+      "dev.zio" %% "zio-test"               % zioV % Test,
+      "dev.zio" %% "zio-test-sbt"           % zioV % Test
     )
   )
 

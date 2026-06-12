@@ -81,6 +81,9 @@ object Backend:
         org.deeplearning4j.nn.conf.layers.SubsamplingLayer.PoolingType.MAX,
         Array(poolSize._1, poolSize._2)).build()
 
+    case LayerDef.LayerNorm(_) =>
+      sys.error("LayerNorm is not available in DL4J 1.0.0-M2.1. Use the DJL backend for native LayerNorm support.")
+
     case LayerDef.Embedding(vocabSize, embeddingDim, pretrained) =>
       val builder = new EmbeddingSequenceLayer.Builder().nIn(vocabSize).nOut(embeddingDim)
       pretrained match
@@ -107,9 +110,13 @@ object Backend:
         .nIn(embeddingDim).nOut(embeddingDim)
         .nHeads(numHeads).headSize(embeddingDim / numHeads)
         .projectInput(true).build()
+    case AdvancedLayerDef.TransformerEncoder(_, _, _, _, _) =>
+      sys.error("TransformerEncoder is not available in DL4J 1.0.0-M2.1. " +
+        "Use the DJL backend for native Transformer support, or manually compose " +
+        "MultiHeadAttention + Dense + LayerNorm via FunctionalDef.")
 
   private def toDL4JLoss(loss: LossFn): LossFunctions.LossFunction = loss match
     case LossFn.MSE => LossFunctions.LossFunction.MSE; case LossFn.MAE => LossFunctions.LossFunction.L1
     case LossFn.BinaryCrossEntropy => LossFunctions.LossFunction.XENT
     case LossFn.CategoricalCrossEntropy => LossFunctions.LossFunction.MCXENT
-    case LossFn.Huber => LossFunctions.LossFunction.L1
+    case LossFn.Huber => LossFunctions.LossFunction.L2 // DL4J has no native Huber — L2 is closest

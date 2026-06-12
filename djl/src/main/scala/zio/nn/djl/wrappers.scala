@@ -47,13 +47,14 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
       val trainer = underlying.newTrainer(config)
       try
         trainer.initialize(new Shape(1, features.head.length.toLong))
+        val lossHistory = scala.collection.mutable.ListBuffer[Double]()
         for _ <- 1 to epochs do
           val dataArr = ndm.create(features); val labelArr = ndm.create(labels.map(Array(_)))
           val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
             features.length, null, null, features.length.toLong, 0L, java.util.Collections.emptyList[Any]())
           ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
-        val loss = trainer.getTrainingResult.getTrainLoss.toDouble
-        FitResult(loss, epochs)
+          lossHistory += trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(lossHistory.lastOption.getOrElse(Double.NaN), epochs, lossHistory.toList)
       finally trainer.close()
     }
 
@@ -66,13 +67,14 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
       val trainer = underlying.newTrainer(config)
       try
         trainer.initialize(new Shape(1, features.head.length.toLong))
+        val lossHistory = scala.collection.mutable.ListBuffer[Double]()
         for _ <- 1 to epochs do
           val dataArr = ndm.create(features); val labelArr = ndm.create(labels)
           val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
             features.length, null, null, features.length.toLong, 0L, java.util.Collections.emptyList[Any]())
           ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
-        val loss = trainer.getTrainingResult.getTrainLoss.toDouble
-        FitResult(loss, epochs)
+          lossHistory += trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(lossHistory.lastOption.getOrElse(Double.NaN), epochs, lossHistory.toList)
       finally trainer.close()
     }
 
@@ -89,13 +91,14 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
       val trainer = underlying.newTrainer(config)
       try
         trainer.initialize(new Shape(1, features.head.length.toLong))
+        val lossHistory = scala.collection.mutable.ListBuffer[Double]()
         for _ <- 1 to epochs do
           val dataArr = ndm.create(features); val labelArr = ndm.create(oneHot)
           val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
             features.length, null, null, features.length.toLong, 0L, java.util.Collections.emptyList[Any]())
           ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
-        val loss = trainer.getTrainingResult.getTrainLoss.toDouble
-        FitResult(loss, epochs)
+          lossHistory += trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(lossHistory.lastOption.getOrElse(Double.NaN), epochs, lossHistory.toList)
       finally trainer.close()
     }
 
@@ -104,7 +107,7 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
     case LossFn.MAE                    => Loss.l1Loss()
     case LossFn.BinaryCrossEntropy     => Loss.sigmoidBinaryCrossEntropyLoss()
     case LossFn.CategoricalCrossEntropy => Loss.softmaxCrossEntropyLoss()
-    case _                             => Loss.l2Loss()
+    case LossFn.Huber                  => Loss.l2Loss() // DJL has no native Huber
 
   /** ESCAPE HATCH: raw DJL prediction with NDList. */
   def predictRaw(input: NDList): Try[NDList] = Try {
@@ -150,13 +153,15 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
       try
         val flatTokens = tokens.flatten.map(_.toLong)
         trainer.initialize(new Shape(tokens.length.toLong, tokens.head.length.toLong))
+        val lossHistory = scala.collection.mutable.ListBuffer[Double]()
         for _ <- 1 to epochs do
           val dataArr = ndm.create(flatTokens, new Shape(tokens.length.toLong, tokens.head.length.toLong))
           val labelArr = ndm.create(labels.map(_.toFloat))
           val batch = new ai.djl.training.dataset.Batch(ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
             tokens.length, null, null, tokens.length.toLong, 0L, java.util.Collections.emptyList[Any]())
           ai.djl.training.EasyTrain.trainBatch(trainer, batch); batch.close()
-        FitResult(trainer.getTrainingResult.getTrainLoss.toDouble, epochs)
+          lossHistory += trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(lossHistory.lastOption.getOrElse(Double.NaN), epochs, lossHistory.toList)
       finally trainer.close()
     }
 

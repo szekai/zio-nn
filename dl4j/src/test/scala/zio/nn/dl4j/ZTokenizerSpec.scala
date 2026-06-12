@@ -31,5 +31,26 @@ object ZTokenizerSpec extends ZIOSpecDefault:
       val result = tok.encode("a b c")
       tok.close()
       assertTrue(result.isSuccess, result.get.tokenIds.length == 3)
+    },
+    test("fromVocabulary creates tokenizer with custom vocabulary") {
+      val vocab = Map("hello" -> 0, "world" -> 1)
+      val tok = ZTokenizer.fromVocabulary(vocab)
+      val result = tok.encode("hello world").get
+      tok.close()
+      assertTrue(result.tokenIds sameElements Array(0, 1))
+    },
+    test("fromVocabulary maps unknown tokens to unkIndex when set") {
+      val vocab = Map("hello" -> 0, "world" -> 1)
+      val tok = ZTokenizer.fromVocabulary(vocab, unkIndex = Some(2))
+      val result = tok.encode("hello unknown").get
+      tok.close()
+      assertTrue(result.tokenIds sameElements Array(0, 2))
+    },
+    test("fromVocabulary drops unknown tokens when unkIndex is None") {
+      val vocab = Map("hello" -> 0, "world" -> 1)
+      val tok = ZTokenizer.fromVocabulary(vocab, unkIndex = None)
+      val result = tok.encode("hello unknown").get
+      tok.close()
+      assertTrue(result.tokenIds sameElements Array(0))
     }
   )

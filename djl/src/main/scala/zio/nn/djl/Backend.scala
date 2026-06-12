@@ -5,8 +5,8 @@ import ai.djl.nn.{Block, SequentialBlock, Blocks, Activation => DJLActivation, L
 import ai.djl.nn.core.Linear
 import ai.djl.nn.recurrent.LSTM as DJLLSTM
 import ai.djl.nn.recurrent.GRU as DJLGRU
-import ai.djl.nn.norm.BatchNorm as DJLBN
-import ai.djl.nn.transformer.{IdEmbedding, ScaledDotProductAttentionBlock}
+import ai.djl.nn.norm.{BatchNorm as DJLBN, LayerNorm as DJLLayerNorm}
+import ai.djl.nn.transformer.{IdEmbedding, ScaledDotProductAttentionBlock, TransformerEncoderBlock}
 import ai.djl.ndarray.{NDList, NDManager}
 import ai.djl.training.ParameterStore
 import scala.collection.mutable
@@ -130,6 +130,8 @@ object Backend:
 
     case LayerDef.BatchNorm(nIn) => DJLBN.builder().build()
 
+    case LayerDef.LayerNorm(nIn) => DJLLayerNorm.builder().build()
+
     case LayerDef.Dropout(_rate) => Blocks.identityBlock()
 
     case LayerDef.Conv2D(_, filters, kernel, stride, act) =>
@@ -179,3 +181,9 @@ object Backend:
         .setHeadCount(numHeads)
         .optAttentionProbsDropoutProb(dropout.toFloat)
         .build()
+    case AdvancedLayerDef.TransformerEncoder(dim, numHeads, ffDim, numLayers, dropout) =>
+      val block = new SequentialBlock()
+      for _ <- 1 to numLayers do
+        block.add(new TransformerEncoderBlock(
+          dim, numHeads, ffDim, dropout.toFloat, (nd: ai.djl.ndarray.NDList) => DJLActivation.relu(nd)))
+      block

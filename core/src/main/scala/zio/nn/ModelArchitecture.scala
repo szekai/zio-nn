@@ -1,5 +1,7 @@
 package zio.nn
 
+import zio.{UIO, ZIO}
+
 /** Framework-agnostic neural network architecture definition.
   *
   * Define your model structure once as pure data, then compile to any backend:
@@ -34,6 +36,11 @@ enum LayerDef:
   case MaxPool2D(poolSize: (Int, Int) = (2, 2))
   case Flatten
 
+  /** Layer normalization — normalizes across feature dimension.
+    * Required building block for Transformer architectures.
+    */
+  case LayerNorm(nIn: Int)
+
   /** Maps discrete token IDs to dense vector representations.
     * When used as first layer, model input is `Array[Array[Int]]` (token indices).
     * Set `pretrained = Some(EmbeddingWeights(...))` to initialize from pre-trained vectors.
@@ -52,6 +59,19 @@ enum AdvancedLayerDef:
   case GRU(nIn: Int, nOut: Int, activation: ActivationFn = ActivationFn.Tanh, dropout: Double = 0.0)
   case BiDirectional(kind: BidirectionalKind, nIn: Int, nOut: Int, activation: ActivationFn, dropout: Double)
   case MultiHeadAttention(embeddingDim: Int, numHeads: Int, dropout: Double = 0.0)
+
+  /** Transformer encoder block — stacks of self-attention + feed-forward.
+    * Wraps MultiHeadAttention, residual connections, LayerNorm, and FFN
+    * into a single block. DJL compiles natively; DL4J users should use DJL
+    * backend or manually compose via FunctionalDef.
+    *
+    * @param dim       model dimension (embedding size)
+    * @param numHeads  number of attention heads
+    * @param ffDim     feed-forward hidden dimension (typically 4 × dim)
+    * @param numLayers number of stacked encoder layers
+    * @param dropout   dropout probability
+    */
+  case TransformerEncoder(dim: Int, numHeads: Int, ffDim: Int, numLayers: Int = 1, dropout: Double = 0.1)
 
 enum BidirectionalKind:
   case LSTM, GRU
@@ -131,8 +151,19 @@ enum ModelDef:
   case Sequential(arch: SequentialDef)
   case Functional(arch: FunctionalDef)
 
-/** Result of a fit() call — unified across backends. */
-case class FitResult(loss: Double, epochs: Int)
+/** Result of a fit() call — unified across backends.
+  *
+  * @param loss            final training loss
+  * @param epochs          total epochs trained
+  * @param lossHistory     per-epoch loss values (empty for simple fit calls)
+  * @param validationLoss  loss on validation data (set when validation split used)
+  */
+case class FitResult(
+  loss: Double,
+  epochs: Int,
+  lossHistory: List[Double] = Nil,
+  validationLoss: Option[Double] = None
+)
 
 /** Training parameters — loaded from config alongside architecture.
   * Use with ConfigLoader.fromHoconWithTraining().
@@ -142,3 +173,87 @@ case class TrainingParams(
   learningRate: Double = 0.01,
   batchSize: Int = 32
 )
+
+// ═══════════════════════════════════════════════════════════
+//  Training Callbacks (ZIO-native)
+// ═══════════════════════════════════════════════════════════
+
+/** Events emitted during a training loop. */
+enum TrainingEvent:
+  /** Fired after each epoch completes — epoch is 1-based. */
+  case EpochEnd(epoch: Int, loss: Double, epochTimeMs: Long)
+  /** Fired after validation run (only when validation data provided). */
+  case ValidationEnd(epoch: Int, validationLoss: Double)
+  /** Fired when training finishes. */
+  case TrainEnd(result: FitResult)
+
+/** ZIO-native callback for training lifecycle hooks.
+  *
+  * Implementations receive [[TrainingEvent]]s during `fitWithCallbacksZ`.
+  * Return `ZIO.unit` for events you don't handle.
+  *
+  * {{{
+  *   val logger = new TrainingCallback {
+  *     def onEvent(event: TrainingEvent) = event match
+  *       case TrainingEvent.EpochEnd(ep, loss, ms) =>
+  *         ZIO.logInfo(s"Epoch $ep: loss=$loss (${ms}ms)")
+  *       case _ => ZIO.unit
+  *   }
+  * }}}
+  */
+trait TrainingCallback:
+  def onEvent(event: TrainingEvent): UIO[Unit]
+
+/** Early stopping callback — stops training when validation loss plateaus.
+  *
+  * Tracks validation loss across epochs. If it fails to improve by at least
+  * `minDelta` for `patience` consecutive epochs, sets `shouldStop = true`.
+  * The training loop checks this after each epoch's validation run.
+  *
+  * {{{
+  *   val earlyStop = EarlyStopping(patience = 5, minDelta = 0.001)
+  *   model.fitWithCallbacksZ(feats, labels, 100, callbacks = List(earlyStop))
+  * }}}
+  */
+class EarlyStopping(val patience: Int = 5, val minDelta: Double = 0.001) extends TrainingCallback:
+  private var bestLoss = Double.MaxValue
+  private var stalled = 0
+  @volatile private var _shouldStop = false
+  def shouldStop: Boolean = _shouldStop
+
+  override def onEvent(event: TrainingEvent): UIO[Unit] = event match
+    case TrainingEvent.ValidationEnd(_, vl) => ZIO.succeed {
+      if vl < bestLoss - minDelta then
+        bestLoss = vl; stalled = 0
+      else
+        stalled += 1
+        if stalled >= patience then _shouldStop = true
+    }
+    case _ => ZIO.unit
+
+  /** Reset internal state — call between independent training runs. */
+  def reset(): Unit =
+    bestLoss = Double.MaxValue; stalled = 0; _shouldStop = false
+
+/** Learning rate schedule: a function from (epochDone, currentLR) to newLR.
+  * Used by `fitWithCallbacksZ` when a schedule is provided.
+  *
+  * {{{
+  *   // Cosine annealing: cycles between 0.0001 and 0.01 every 10 epochs
+  *   val cosine = LRSchedule.cosineAnnealing(minLr = 0.0001f, maxLr = 0.01f, cycleLength = 10)
+  *   model.fitWithCallbacksZ(feats, labels, 100, lr = 0.01f, lrSchedule = cosine)
+  * }}}
+  */
+object LRSchedule:
+  /** Fixed learning rate — no change between epochs (default). */
+  val fixed: (Int, Float) => Float = (_, lr) => lr
+
+  /** Cosine annealing schedule.
+    * @param minLr       minimum learning rate (trough)
+    * @param maxLr       maximum learning rate (peak)
+    * @param cycleLength epochs per half-cycle (peak-to-trough)
+    */
+  def cosine(minLr: Float, maxLr: Float, cycleLength: Int): (Int, Float) => Float =
+    (epoch, _) =>
+      val progress = (epoch % cycleLength).toDouble / cycleLength
+      (minLr + (maxLr - minLr) * ((1.0 + math.cos(math.Pi * progress)) / 2.0)).toFloat

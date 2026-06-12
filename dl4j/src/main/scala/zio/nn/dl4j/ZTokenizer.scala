@@ -15,17 +15,25 @@ import scala.util.Try
   *   model.fitInt(batchOfIds, labels, epochs = 5)
   *   tok.close()
   * }}}
+  *
+  * @param unkIndex  when set, unknown tokens are mapped to this index instead of dropped
   */
 class ZTokenizer private (
   val split: String => Array[String],
   val vocabulary: Map[String, Int],
-  val config: TokenizerConfig
+  val config: TokenizerConfig,
+  val unkIndex: Option[Int] = None
 ):
 
-  /** Encode a single text string into token IDs via vocabulary lookup. */
+  /** Encode a single text string into token IDs via vocabulary lookup.
+    * When `unkIndex` is set, tokens not in the vocabulary get that index.
+    * Otherwise, unknown tokens are silently dropped.
+    */
   def encode(text: String): Try[EncodingResult] = Try {
     val tokens = split(text)
-    val ids = tokens.flatMap(t => vocabulary.get(t.toLowerCase))
+    val ids = unkIndex match
+      case Some(unk) => tokens.map(t => vocabulary.getOrElse(t.toLowerCase, unk))
+      case None      => tokens.flatMap(t => vocabulary.get(t.toLowerCase))
     EncodingResult(
       tokenIds      = ids,
       attentionMask = if config.padding then Some(Array.fill(ids.length)(1)) else None,
@@ -68,3 +76,23 @@ object ZTokenizer:
     */
   def whitespace(config: TokenizerConfig = TokenizerConfig()): ZTokenizer =
     ZTokenizer.regex("\\s+", config).get
+
+  /** Create a tokenizer from an explicit vocabulary map.
+    *
+    * Useful for bootstrapping a tokenizer from pre-trained model vocabularies
+    * (e.g. Word2Vec, GloVe). Each token in the input text is split by the
+    * `split` function, then looked up in `vocabulary`. When `unkIndex` is set,
+    * out-of-vocabulary tokens get that index instead of being dropped.
+    *
+    * @param vocabulary  word → token ID mapping
+    * @param split       function to split text into tokens (default: whitespace)
+    * @param config      tokenizer configuration
+    * @param unkIndex    index for unknown tokens (None = drop unknowns)
+    */
+  def fromVocabulary(
+    vocabulary: Map[String, Int],
+    split: String => Array[String] = _.split("\\s+").filter(_.nonEmpty),
+    config: TokenizerConfig = TokenizerConfig(),
+    unkIndex: Option[Int] = None
+  ): ZTokenizer =
+    new ZTokenizer(split, vocabulary, config, unkIndex)

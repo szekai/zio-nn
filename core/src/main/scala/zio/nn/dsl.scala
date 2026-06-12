@@ -62,6 +62,22 @@ object dsl:
   def MultiHeadAttention(embeddingDim: Int, numHeads: Int, dropout: Double = 0.0): LayerSpec =
     LayerSpec.MultiHeadAttention(embeddingDim, numHeads, dropout)
 
+  /** Layer normalization — normalizes across feature dimension.
+    * Required for Transformer architectures.
+    */
+  val LayerNorm: LayerSpec = LayerSpec.LayerNorm
+
+  /** Transformer encoder block — full encoder with self-attention + FFN.
+    *
+    * @param dim       model dimension (embedding size)
+    * @param numHeads  number of attention heads
+    * @param ffDim     feed-forward hidden size (typically 4 × dim)
+    * @param numLayers number of stacked encoder layers (default: 1)
+    * @param dropout   dropout probability (default: 0.1)
+    */
+  def TransformerEncoder(dim: Int, numHeads: Int, ffDim: Int, numLayers: Int = 1, dropout: Double = 0.1): LayerSpec =
+    LayerSpec.TransformerEncoder(dim, numHeads, ffDim, numLayers, dropout)
+
   // ═══ Activation / Loss / Optimizer shortcuts ═══
   val Tanh    = ActivationFn.Tanh
   val ReLU    = ActivationFn.ReLU
@@ -88,6 +104,8 @@ object dsl:
     case GRU(nOut: Int, activation: ActivationFn, dropout: Double)
     case BiDirectional(inner: LayerSpec)
     case MultiHeadAttention(embeddingDim: Int, numHeads: Int, dropout: Double)
+    case LayerNorm
+    case TransformerEncoder(dim: Int, numHeads: Int, ffDim: Int, numLayers: Int, dropout: Double)
 
     def resolve(nIn: Int): AnyLayer = this match
       case LayerSpec.LSTM(nOut, act, drop) => AnyLayer.Standard(LayerDef.LSTM(nIn, nOut, act, drop))
@@ -109,6 +127,10 @@ object dsl:
         AnyLayer.Advanced(AdvancedLayerDef.BiDirectional(resolved._1, nIn, resolved._2, resolved._3, resolved._4))
       case LayerSpec.MultiHeadAttention(embeddingDim, numHeads, dropout) =>
         AnyLayer.Advanced(AdvancedLayerDef.MultiHeadAttention(embeddingDim, numHeads, dropout))
+      case LayerSpec.LayerNorm =>
+        AnyLayer.Standard(LayerDef.LayerNorm(nIn))
+      case LayerSpec.TransformerEncoder(dim, numHeads, ffDim, numLayers, dropout) =>
+        AnyLayer.Advanced(AdvancedLayerDef.TransformerEncoder(dim, numHeads, ffDim, numLayers, dropout))
 
     def outputSize: Int = this match
       case LayerSpec.LSTM(nOut, _, _)   => nOut
@@ -123,6 +145,8 @@ object dsl:
       case LayerSpec.GRU(nOut, _, _)           => nOut
       case LayerSpec.BiDirectional(inner)      => inner.outputSize * 2
       case LayerSpec.MultiHeadAttention(embeddingDim, _, _) => embeddingDim
+      case LayerSpec.LayerNorm          => -1
+      case LayerSpec.TransformerEncoder(dim, _, _, _, _) => dim
 
   // ═══ Sequential builder ═══
 

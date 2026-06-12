@@ -28,7 +28,9 @@ class ImageTransformer(pipeline: ImagePipeline):
     val buf  = ImageIO.read(new ByteArrayInputStream(imageBytes))
     val hIn  = buf.getHeight
     val wIn  = buf.getWidth
-    val ch   = if buf.getColorModel.hasAlpha then 4 else 3
+    val ch   = buf.getType match
+                case java.awt.image.BufferedImage.TYPE_BYTE_GRAY => 1
+                case _ => if buf.getColorModel.hasAlpha then 4 else 3
     var arr  = rasterToINDArray(buf, hIn, wIn, ch)
 
     for t <- pipeline.transforms do
@@ -51,24 +53,28 @@ class ImageTransformer(pipeline: ImagePipeline):
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   private def rasterToINDArray(buf: java.awt.image.BufferedImage, h: Int, w: Int, ch: Int): INDArray = {
-    val pixels = buf.getRGB(0, 0, w, h, null, 0, w)
-    val data   = new Array[Float](h * w * ch)
-    var idx    = 0
-    for (y <- 0 until h; x <- 0 until w) {
-      val rgb   = pixels(y * w + x)
-      val r     = ((rgb >> 16) & 0xFF).toFloat / 255f
-      val g     = ((rgb >> 8) & 0xFF).toFloat / 255f
-      val b     = (rgb & 0xFF).toFloat / 255f
-      if (ch == 4) {
-        val a = ((rgb >> 24) & 0xFF).toFloat / 255f
-        data(idx) = r; data(idx + 1) = g; data(idx + 2) = b; data(idx + 3) = a
-        idx += 4
-      } else {
-        data(idx) = r; data(idx + 1) = g; data(idx + 2) = b
-        idx += 3
+    if buf.getType == java.awt.image.BufferedImage.TYPE_BYTE_GRAY then
+      val data = buf.getData.getPixels(0, 0, w, h, null: Array[Float])
+      Nd4j.create(data).reshape(h, w)
+    else
+      val pixels = buf.getRGB(0, 0, w, h, null, 0, w)
+      val data   = new Array[Float](h * w * ch)
+      var idx    = 0
+      for (y <- 0 until h; x <- 0 until w) {
+        val rgb   = pixels(y * w + x)
+        val r     = ((rgb >> 16) & 0xFF).toFloat / 255f
+        val g     = ((rgb >> 8) & 0xFF).toFloat / 255f
+        val b     = (rgb & 0xFF).toFloat / 255f
+        if (ch == 4) {
+          val a = ((rgb >> 24) & 0xFF).toFloat / 255f
+          data(idx) = r; data(idx + 1) = g; data(idx + 2) = b; data(idx + 3) = a
+          idx += 4
+        } else {
+          data(idx) = r; data(idx + 1) = g; data(idx + 2) = b
+          idx += 3
+        }
       }
-    }
-    Nd4j.create(data).reshape(h, w * ch)
+      Nd4j.create(data).reshape(h, w * ch)
   }
 
   private def resizeINDArray(arr: INDArray, tH: Int, tW: Int, hIn: Int, wIn: Int): INDArray = {

@@ -2,7 +2,7 @@ package zio.nn.djl
 
 import zio.*
 import zio.stream.*
-import zio.nn.{EncodingResult, FitResult}
+import zio.nn.{EncodingResult, FitResult, TrainingCallback, TrainingEvent, EarlyStopping, LRSchedule}
 import java.nio.file.Path
 
 object zioApi:
@@ -69,6 +69,80 @@ object zioApi:
           epochs = epochs,
           saveEvery = saveEvery
         )
+
+  // ── Advanced Training: Callbacks, Validation, LR Schedule ──────────────
+  extension (model: ZModel)
+
+    /** Train with per-epoch callbacks, early stopping, and LR scheduling.
+      *
+      * Runs epochs one at a time, firing [[TrainingEvent]]s to all callbacks
+      * after each epoch. Validation data is supported but validation loss
+      * tracking is only available in the DL4J backend.
+      *
+      * {{{
+      *   val earlyStop = EarlyStopping(patience = 3)
+      *   model.fitWithCallbacksZ(feats, labels, 50, callbacks = List(earlyStop))
+      * }}}
+      */
+    def fitWithCallbacksZ(
+      features: Array[Array[Float]],
+      labels: Array[Float],
+      epochs: Int,
+      lr: Float = 0.001f,
+      callbacks: List[TrainingCallback] = Nil,
+      lrSchedule: (Int, Float) => Float = LRSchedule.fixed
+    ): ZIO[Any, Throwable, FitResult] =
+      def fire(event: TrainingEvent): UIO[Unit] =
+        ZIO.foreachDiscard(callbacks)(_.onEvent(event))
+
+      def isStopped: Boolean = callbacks.exists {
+        case es: EarlyStopping => es.shouldStop
+        case _ => false
+      }
+
+      def loop(epoch: Int, history: List[Double], currentLr: Float): ZIO[Any, Throwable, FitResult] =
+        if epoch > epochs then
+          val result = FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history)
+          fire(TrainingEvent.TrainEnd(result)).as(result)
+        else
+          for
+            start       <- Clock.nanoTime
+            epochResult <- ZIO.attemptBlocking(model.fit(features, labels, 1, currentLr).get)
+            elapsed     <- Clock.nanoTime.map(ns => (ns - start) / 1000000)
+            loss         = epochResult.loss
+            _           <- fire(TrainingEvent.EpochEnd(epoch, loss, elapsed))
+            nextLr       = lrSchedule(epoch, currentLr)
+            nextHistory  = history :+ loss
+            result      <-
+              if isStopped then
+                val fr = FitResult(loss, epoch, nextHistory)
+                fire(TrainingEvent.TrainEnd(fr)).as(fr)
+              else
+                loop(epoch + 1, nextHistory, nextLr)
+          yield result
+
+      loop(1, Nil, lr)
+
+    /** Train with automatic validation split and early stopping (DL4J preferred).
+      * For DJL backend, this trains without validation splitting.
+      */
+    def fitWithValidationZ(
+      features: Array[Array[Float]],
+      labels: Array[Float],
+      epochs: Int,
+      lr: Float = 0.001f,
+      validationSplit: Double = 0.2,
+      patience: Int = 5,
+      callbacks: List[TrainingCallback] = Nil
+    ): ZIO[Any, Throwable, FitResult] =
+      val earlyStop = EarlyStopping(patience = patience)
+      fitWithCallbacksZ(
+        features = features,
+        labels = labels,
+        epochs = epochs,
+        lr = lr,
+        callbacks = earlyStop :: callbacks
+      )
 
   // ── ZTokenizer ZIO wrappers ────────────────────────────────────────────
   extension (tok: ZTokenizer)

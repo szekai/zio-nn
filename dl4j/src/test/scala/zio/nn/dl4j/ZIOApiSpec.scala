@@ -65,5 +65,56 @@ object ZIOApiSpec extends ZIOSpecDefault:
           _    <- ZIO.attemptBlocking(model.close()).orDie
         yield assert(exit)(fails(isSubtype[IllegalArgumentException](anything)))
       }
+    },
+    test("fit() returns lossHistory with per-epoch values") {
+      val arch = Sequential(7)(Dense(5), Output(1)).build
+      val model = ZModel.create(arch)
+      val feats = Array.fill(6)(Array.fill(7)(scala.util.Random.nextFloat()))
+      val labels = Array.fill(6)(scala.util.Random.nextFloat())
+      val result = model.fit(feats, labels, 3)
+      model.close()
+      assertTrue(
+        result.isSuccess,
+        result.get.lossHistory.length == 3,
+        result.get.lossHistory.forall(!_.isNaN)
+      )
+    },
+    test("fitWithCallbacksZ fires EpochEnd events") {
+      val arch = Sequential(7)(Dense(5), Output(1)).build
+      var epochCount = 0
+      val listener = new TrainingCallback:
+        def onEvent(event: TrainingEvent) = event match
+          case TrainingEvent.EpochEnd(_, _, _) => ZIO.succeed { epochCount += 1 }
+          case _ => ZIO.unit
+      zioApi.create(arch).flatMap { model =>
+        model.fitWithCallbacksZ(
+          features = Array.fill(4)(Array.fill(7)(0.25f)),
+          labels = Array.fill(4)(0.5f),
+          epochs = 3,
+          callbacks = List(listener)
+        ).map { result =>
+          model.close()
+          assertTrue(epochCount == 3, result.lossHistory.length == 3)
+        }
+      }
+    },
+    test("fitWithCallbacksZ fires TrainEnd event") {
+      val arch = Sequential(7)(Dense(5), Output(1)).build
+      var trainEnded = false
+      val listener = new TrainingCallback:
+        def onEvent(event: TrainingEvent) = event match
+          case TrainingEvent.TrainEnd(_) => ZIO.succeed { trainEnded = true }
+          case _ => ZIO.unit
+      zioApi.create(arch).flatMap { model =>
+        model.fitWithCallbacksZ(
+          features = Array.fill(4)(Array.fill(7)(0.25f)),
+          labels = Array.fill(4)(0.5f),
+          epochs = 2,
+          callbacks = List(listener)
+        ).as {
+          model.close()
+          assertTrue(trainEnded)
+        }
+      }
     }
   ).provideLayer(Scope.default)

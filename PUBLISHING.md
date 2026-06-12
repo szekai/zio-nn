@@ -2,27 +2,60 @@
 
 ## Prerequisites
 
-1. **Sonatype JIRA account**: Sign up at [issues.sonatype.org](https://issues.sonatype.org)
-2. **Claim `io.github.szekai` group ID**: Create a JIRA ticket requesting `io.github.szekai` namespace
-3. **GPG key**: Generate with `gpg --gen-key`, publish with `gpg --keyserver keyserver.ubuntu.com --send-keys YOUR_KEY_ID`
+1. **Sonatype Central account**: Sign up at [central.sonatype.com](https://central.sonatype.com)
+2. **Generate a Sonatype user token**: Central → Your Name → User Tokens → Generate
+3. **GPG key**: Generate with `gpg --gen-key`, publish to a keyserver (see below)
 
 ## GPG Setup
 
 ```bash
-# Generate key
+# Generate key (RSA 4096, no expiry, use szekai@users.noreply.github.com)
 gpg --gen-key
-# Use: RSA 4096, no expiry, real name + email
 
 # List keys to get your KEY_ID
 gpg --list-keys --keyid-format SHORT
-# Example output: pub rsa4096/ABC12345
+# Example: pub rsa4096/ABC12345
 
-# Publish to keyserver
+# Publish to keyserver so Maven Central can verify
 gpg --keyserver keyserver.ubuntu.com --send-keys ABC12345
 
-# Export for sbt (optional — gpg-agent handles this automatically on most systems)
-# gpg --export-secret-keys > ~/.sbt/gpg/secring.asc
+# Export the private key in ASCII-armored format (for GitHub secret)
+gpg --armor --export-secret-keys ABC12345 | base64
+# → copy the output, this is your PGP_SECRET
 ```
+
+## Setting Up GitHub Secrets
+
+The CI pipeline (`.github/workflows/ci.yml`) uses four repository secrets.
+Add them in GitHub → Settings → Secrets and variables → Actions:
+
+| Secret | Value | How to get |
+|--------|-------|------------|
+| `PGP_PASSPHRASE` | GPG key passphrase | The passphrase you used when generating the GPG key |
+| `PGP_SECRET` | Base64-encoded private key | `gpg --armor --export-secret-keys KEY_ID \| base64` |
+| `SONATYPE_USERNAME` | Sonatype user token username | Sonatype Central → User Tokens |
+| `SONATYPE_PASSWORD` | Sonatype user token password | Sonatype Central → User Tokens |
+
+## Release via CI (recommended)
+
+Version is managed automatically by `sbt-dynver` from git tags.
+No version string in `build.sbt` — just tag and push:
+
+```bash
+# Ensure tests pass
+sbt test
+
+# Tag the release (version derived from tag name)
+git tag v0.9.0
+git push origin v0.9.0
+
+# GitHub Actions runs: test → release
+# Artifact lands on Maven Central in ~10 minutes
+```
+
+The CI workflow (`.github/workflows/ci.yml`) handles everything:
+- `test` job: runs `sbt test` on every PR/push
+- `release` job: runs `sbt ci-release` when a `v*` tag is pushed
 
 ## Local Test Publish
 
@@ -37,86 +70,35 @@ sbt publishM2
 ls ~/.m2/repository/io/github/szekai/zio-nn-core_3/0.8.0/
 ```
 
-## Sonatype Staging (Dry Run)
+## Manual Sonatype Staging (if CI is unavailable)
 
 ```bash
 # Stage to Sonatype without releasing
-sbt publishSigned
-sbt sonatypeBundleRelease  # use sonatypeDrop to abort
-```
+CI=true sbt ci-release
 
-## Release Steps
-
-```bash
-# 1. Set version in build.sbt (remove -SNAPSHOT)
-# 2. Commit and tag
-git add build.sbt
-git commit -m "Release v0.8.0"
-git tag -a v0.8.0 -m "zio-nn v0.8.0"
-git push origin main --tags
-
-# 3. Publish signed artifacts
-sbt publishSigned
-
-# 4. Release to Maven Central
-sbt sonatypeBundleRelease
-
-# 5. Bump version for next development cycle
-# Edit build.sbt: version := "0.8.1-SNAPSHOT"
-git add build.sbt
-git commit -m "Bump to v0.8.1-SNAPSHOT"
-git push
+# This does: publishSigned → sonatypeBundleRelease
+# To abort before release: use sonatypeDrop instead
 ```
 
 ## Maven Central Coordinates
 
-After release, dependencies are available at:
-
 ```scala
 // build.sbt
 libraryDependencies ++= Seq(
-  "io.github.szekai" %% "zio-nn-core" % "0.8.0",
-  "io.github.szekai" %% "zio-nn-djl"  % "0.8.0",
-  // or "io.github.szekai" %% "zio-nn-dl4j" % "0.8.0"
+  "io.github.szekai" %% "zio-nn-core" % "<version>",
+  "io.github.szekai" %% "zio-nn-djl"  % "<version>",
+  // or "io.github.szekai" %% "zio-nn-dl4j" % "<version>"
 )
 ```
 
 Searchable at: https://search.maven.org/artifact/io.github.szekai/zio-nn-core_3
-
-## CI/CD (GitHub Actions)
-
-```yaml
-# .github/workflows/release.yml
-name: Release
-on:
-  push:
-    tags: ['v*']
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-      - uses: sbt/setup-sbt@v1
-      - name: Import GPG key
-        run: echo "$GPG_SECRET_KEY" | gpg --import
-        env:
-          GPG_SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
-      - name: Publish
-        run: sbt publishSigned sonatypeBundleRelease
-        env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-```
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
 | `gpg: signing failed: Inappropriate ioctl` | `export GPG_TTY=$(tty)` |
-| `401 Unauthorized` | Check SONATYPE_USERNAME/PASSWORD in `~/.sbt/sonatype_credentials` |
-| `Already claimed` | Group ID already taken — choose a different one |
+| `401 Unauthorized` | Check SONATYPE_USERNAME/PASSWORD in GitHub secrets |
 | `No public key` | Run `gpg --keyserver keyserver.ubuntu.com --send-keys KEY_ID` |
+| `sbt-dynver` wrong version | Ensure the latest tag matches `v<semver>` (run `git tag --sort=-v:refname`) |
+| Release job skipped | Tags must match `v*` pattern (e.g., `v0.9.0` not `0.9.0`) |

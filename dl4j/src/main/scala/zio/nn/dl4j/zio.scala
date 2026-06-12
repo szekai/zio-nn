@@ -2,7 +2,8 @@ package zio.nn.dl4j
 
 import zio.*
 import zio.stream.*
-import zio.nn.{EncodingResult, FitResult}
+import zio.nn.{EncodingResult, FitResult, TrainingCallback, TrainingEvent, EarlyStopping, LRSchedule}
+import org.nd4j.linalg.factory.Nd4j
 import java.io.File
 
 object zioApi:
@@ -69,6 +70,101 @@ object zioApi:
           epochs = epochs,
           saveEvery = saveEvery
         )
+
+  // ── Advanced Training: Callbacks, Validation, LR Schedule ──────────────
+  extension (model: ZModel)
+
+    /** Train with per-epoch callbacks, early stopping, and LR scheduling.
+      *
+      * Runs epochs one at a time, firing [[TrainingEvent]]s to all callbacks
+      * after each epoch. When validation data is provided, validation loss is
+      * computed after each training epoch via forward pass scoring.
+      *
+      * {{{
+      *   val earlyStop = EarlyStopping(patience = 3, minDelta = 0.001)
+      *   val cosine    = LRSchedule.cosine(minLr = 0.0001f, maxLr = 0.01f, 10)
+      *   model.fitWithCallbacksZ(feats, labels, 50,
+      *     callbacks    = List(earlyStop),
+      *     lrSchedule   = cosine,
+      *     validationData = Some((vFeats, vLabels)))
+      * }}}
+      */
+    def fitWithCallbacksZ(
+      features: Array[Array[Float]],
+      labels: Array[Float],
+      epochs: Int,
+      lr: Float = 0.001f,
+      callbacks: List[TrainingCallback] = Nil,
+      lrSchedule: (Int, Float) => Float = LRSchedule.fixed,
+      validationData: Option[(Array[Array[Float]], Array[Float])] = None
+    ): ZIO[Any, Throwable, FitResult] =
+      def fire(event: TrainingEvent): UIO[Unit] =
+        ZIO.foreachDiscard(callbacks)(_.onEvent(event))
+
+      val validationDs: Option[org.nd4j.linalg.dataset.DataSet] = validationData.map { (vf, vl) =>
+        new org.nd4j.linalg.dataset.DataSet(Nd4j.create(vf), Nd4j.create(vl.map(Array(_))))
+      }
+
+      def isStopped: Boolean = callbacks.exists {
+        case es: EarlyStopping => es.shouldStop
+        case _ => false
+      }
+
+      def loop(epoch: Int, history: List[Double], currentLr: Float): ZIO[Any, Throwable, FitResult] =
+        if epoch > epochs then
+          val result = FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history)
+          fire(TrainingEvent.TrainEnd(result)).as(result)
+        else
+          for
+            start       <- Clock.nanoTime
+            epochResult <- ZIO.attemptBlocking(model.fit(features, labels, 1, currentLr).get)
+            elapsed     <- Clock.nanoTime.map(ns => (ns - start) / 1000000)
+            loss         = epochResult.loss
+            _           <- fire(TrainingEvent.EpochEnd(epoch, loss, elapsed))
+            _           <- ZIO.foreachDiscard(validationDs) { vDs =>
+                            ZIO.attemptBlocking(model.underlying.score(vDs)).flatMap { vLoss =>
+                              fire(TrainingEvent.ValidationEnd(epoch, vLoss))
+                            }
+                          }
+            nextLr       = lrSchedule(epoch, currentLr)
+            nextHistory  = history :+ loss
+            result      <-
+              if isStopped then
+                val fr = FitResult(loss, epoch, nextHistory)
+                fire(TrainingEvent.TrainEnd(fr)).as(fr)
+              else
+                loop(epoch + 1, nextHistory, nextLr)
+          yield result
+
+      loop(1, Nil, lr)
+
+    /** Train with automatic validation split and early stopping.
+      *
+      * Splits data into training and validation sets, trains with
+      * [[EarlyStopping]] enabled, and returns [[FitResult]] with
+      * validation loss.
+      */
+    def fitWithValidationZ(
+      features: Array[Array[Float]],
+      labels: Array[Float],
+      epochs: Int,
+      lr: Float = 0.001f,
+      validationSplit: Double = 0.2,
+      patience: Int = 5,
+      callbacks: List[TrainingCallback] = Nil
+    ): ZIO[Any, Throwable, FitResult] =
+      val splitIdx = (features.length * (1.0 - validationSplit)).toInt.max(1)
+      val (trainFeats, valFeats) = features.splitAt(splitIdx)
+      val (trainLabels, valLabels) = labels.splitAt(splitIdx)
+      val earlyStop = EarlyStopping(patience = patience)
+      fitWithCallbacksZ(
+        features = trainFeats,
+        labels = trainLabels,
+        epochs = epochs,
+        lr = lr,
+        callbacks = earlyStop :: callbacks,
+        validationData = Some((valFeats, valLabels))
+      )
 
   // ── ZTokenizer ZIO wrappers ────────────────────────────────────────────
   extension (tok: ZTokenizer)
