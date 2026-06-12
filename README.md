@@ -34,8 +34,8 @@ model.close()
 | `zio-nn-dl4j-embeddings` | Word2Vec training (`SequenceVectors + SkipGram`), pre-trained vector loading, embedding-to-LayerSpec bridge |
 
 ```scala
-// sbt
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "0.8.0"  // or zio-nn-dl4j
+// sbt — check latest release tag for version: https://github.com/szekai/zio-nn/releases
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "<version>"  // or zio-nn-dl4j
 ```
 
 ## Quick Start

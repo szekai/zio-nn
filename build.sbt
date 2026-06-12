@@ -1,32 +1,26 @@
-import sbt.*
+import sbt.{ given, * }
+import java.net.URI
 
 val scala3 = "3.8.3"
 val zioV   = "2.1.25"
 val djlV   = "0.36.0"
 val dl4jV  = "1.0.0-M2.1"
 
-ThisBuild / scalaVersion := scala3
-ThisBuild / organization := "io.github.szekai"
-ThisBuild / version      := "0.8.0"
-ThisBuild / homepage     := Some(url("https://github.com/szekai/zio-nn"))
-ThisBuild / licenses     := List("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
-ThisBuild / developers   := List(
+scalaVersion := scala3
+organization := "io.github.szekai"
+
+homepage     := Some(URI("https://github.com/szekai/zio-nn"))
+licenses     := Seq("Apache-2.0" -> URI("https://www.apache.org/licenses/LICENSE-2.0"))
+developers   := List(
   Developer("szekai", "Sze Kai", "szekai@users.noreply.github.com", url("https://github.com/szekai"))
 )
-ThisBuild / scmInfo      := Some(ScmInfo(
+scmInfo      := Some(ScmInfo(
   url("https://github.com/szekai/zio-nn"),
   "scm:git:https://github.com/szekai/zio-nn.git",
   "scm:git:git@github.com:szekai/zio-nn.git"
 ))
 
-// Sonatype / Maven Central
-ThisBuild / sonatypeCredentialHost := "s01.oss.sonatype.org"
-ThisBuild / sonatypeProfileName    := "io.github.szekai"
-ThisBuild / publishTo              := sonatypePublishToBundle.value
-ThisBuild / pomIncludeRepository   := { _ => false }
-
-// Disable publishing for root aggregate
-publish / skip := true
+// publishTo — managed by sbt-ci-release
 
 // ── Core: framework-agnostic architecture DSL ──────────
 lazy val core = project
@@ -73,7 +67,7 @@ lazy val dl4j = project
       "dev.zio"             %% "zio-test"               % zioV % Test,
       "dev.zio"             %% "zio-test-sbt"           % zioV % Test
     )
-    )
+  )
 
 // ── DL4J Embeddings: Word2Vec training + pre-trained vector loading ──
 lazy val embeddings = project

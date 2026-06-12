@@ -55,32 +55,44 @@ When a feature truly cannot be implemented in one backend:
 
 **Anti-example**: Saying "DJL Embedding has no builder, use escape hatch" — we found `IdEmbedding` with a public builder. Always exhaust the API before giving up.
 
-### 3. Semantic Versioning (SemVer) — `MAJOR.MINOR.PATCH`
+### 3. Versioning — `sbt-dynver` (git-tag-driven)
 
-Pre-1.0 (`0.y.z`) follows standard semver conventions:
-- **MAJOR (y)**: New module, new LayerDef variants, DSL-breaking changes, API signature changes
-- **MINOR (z)**: Bug fixes, doc-only changes, non-breaking internal refactors
-- **PATCH**: Not used pre-1.0 (everything is y.z)
+Version is managed automatically by `sbt-dynver` (bundled via `sbt-ci-release`):
 
-**Version bump checklist**:
-- Adding a new `LayerDef` or `AdvancedLayerDef` variant → bump MAJOR (y)
-- Adding a new top-level module (e.g., `embeddings/`) → bump MAJOR (y)
-- Changing any existing method signature → bump MAJOR (y)
-- Docs-only, test fixes, internal refactors → bump MINOR (z)
+- **Current version**: derived from the nearest `v*` git tag (e.g., `v0.8.0` → version `0.8.0`)
+- **Untagged commits**: produce `<tag>-<n>-g<sha>-SNAPSHOT` (e.g., `0.8.0-3-gdeadbeef-SNAPSHOT`)
+- **No tags at all**: falls back to `0.1.0-SNAPSHOT` (you should tag before first release)
+- Pre-1.0 semver: MAJOR (y) = new modules/layers/breaking changes, MINOR (z) = bug fixes/docs
 
-Post-1.0, standard semver applies: MAJOR for breaking changes, MINOR for new features, PATCH for fixes.
+**Version bump** = push a tag matching `v<major>.<minor>.<patch>`:
+
+```bash
+git tag v0.9.0            # bump MAJOR (new module or breaking change)
+git tag v0.8.1            # bump MINOR (bug fixes, docs, refactors)
+git push origin v0.9.0    # triggers CI release
+```
+
+**Tag checklist** (bump MAJOR y):
+- Adding a new `LayerDef` or `AdvancedLayerDef` variant
+- Adding a new top-level module (e.g., `embeddings/`)
+- Changing any existing method signature
+
+**Tag checklist** (bump MINOR z):
+- Docs-only, test fixes, non-breaking internal refactors
 
 ### 3a. Release Candidates (`-RC`)
 
-For MAJOR version bumps (new module, new layers, API changes), use release candidates before the final tag:
+Tag with `-RC<N>` suffix for pre-release testing (semver pre-release precedence means `0.9.0-RC1` sorts before `0.9.0`):
 
-```
-0.8.0-RC1   →  publish, test downstream, gather feedback
-0.8.0-RC2   →  fix issues found in RC1 (if needed)
-0.8.0       →  final release, no changes from last RC
+```bash
+git tag v0.9.0-RC1
+git push origin v0.9.0-RC1    # CI publishes to Sonatype, but users get RC artifacts
+# iterate with -RC2, -RC3 if needed …
+git tag v0.9.0                # final release
+git push origin v0.9.0
 ```
 
-**Why**: Maven Central artifacts are immutable — you cannot delete, overwrite, or retract a published version. An RC lets you verify the published artifact works in real projects before committing to the final version tag. If an RC has bugs, you burn `-RC2` instead of `0.8.1`.
+**Why RC**: Maven Central artifacts are immutable. An RC lets you verify the published artifact in real projects before committing to the final version. If an RC has bugs, burn `-RC2` instead of `0.9.1`.
 
 **When**: Required for any release that adds a new module or LayerDef variant. Optional for minor (z) bumps.
 
@@ -96,6 +108,36 @@ Milestone: v0.9.0
 ```
 
 **Convention**: Milestone title matches the target version tag. Close the milestone when the version is released. Each open issue in a milestone blocks that release.
+
+### 3c. CI/CD Pipeline (`sbt-ci-release` + GitHub Actions)
+
+The CI workflow (`.github/workflows/ci.yml`) has two jobs:
+
+| Job | Trigger | What it does |
+|-----|---------|-------------|
+| `test` | PR + push to `main` | `sbt test` — compile and run all 50 tests across all modules |
+| `release` | Push tag `v*` (after `test` passes) | `sbt ci-release` — tags the release, publishes signed artifacts to Sonatype, closes and releases the staging repository |
+
+**Required secrets** (set in GitHub repo settings → Secrets and variables → Actions):
+- `SONATYPE_USERNAME` / `SONATYPE_PASSWORD` — Sonatype (s01.oss.sonatype.org) credentials
+- `PGP_SECRET` — ASCII-armored GPG private key (`gpg --armor --export-secret-keys <key-id>`)
+- `PGP_PASSPHRASE` — passphrase for the GPG key
+
+**Release workflow**:
+1. Ensure `main` is green (all tests pass)
+2. `git checkout main && git pull --tags`
+3. `git tag v<version>` (e.g., `v0.9.0`)
+4. `git push origin v<version>`
+5. GitHub Actions runs `test` → `release` → artifact lands on Maven Central (~10 min)
+6. Create a GitHub Release from the tag for visibility
+
+**Local testing** (without CI):
+```bash
+# publishTo and Sonatype staging are managed internally by sbt-ci-release
+CI=true sbt ci-release                     # full ci-release flow locally
+```
+
+**Note**: `build.sbt` must NOT define `version`, `publishTo`, `publishMavenStyle`, or `credentials` — sbt-ci-release handles all of them.
 
 ## Boundary Rules
 
