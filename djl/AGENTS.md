@@ -9,7 +9,9 @@ Deep Java Library (DJL) backend — PyTorch/ONNX/TF/MXNet engine support.
 - **implicits.scala** — `Array[Float]` ↔ `NDArray` via `.toNDArray`/`.toFloatArray`, `Array[Array[Float]]` ↔ `NDList` via `.toNDList`/`.toFloatArrays`. Requires implicit `NDManager`.
 - **scope.scala** — `withNDManager(program: ZIO[Any, Throwable, T])` manages NDManager lifecycle. Sub-manager per call for safety. Optional — internal base manager handles default resource lifecycle.
 - **tensor/** — `TensorOps` for NDArray math: `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `create`, `create1D`, `createDouble`, `createDouble1D`. All ops wrapped in ZIO.
-- **zio.scala** — ZIO-native wrappers: `predictZ`, `predictDoubleZ`, `fitZ`, `predictFlow`, `fitFlow` (ZStream), `predictTimed`, `fitTimed`, `fitWithCheckpoints`.
+- **zio.scala** — ZIO-native wrappers: `predictZ`, `predictDoubleZ`, `fitZ`, `predictFlow`, `fitFlow` (ZStream), `predictTimed`, `fitTimed`, `fitWithCheckpoints`, plus tokenizer wrappers (`huggingFaceTokenizer`, `encodeZ`, `batchEncodeZ`, `decodeZ`).
+- **ZTokenizer.scala** — HuggingFace tokenizer wrapper: `ZTokenizer.huggingFace(modelName)`, `fromJson(path)`. Methods: `encode`, `batchEncode`, `decode`. Requires `"ai.djl.huggingface" % "tokenizers"` on classpath.
+- **ImageTransformer.scala** — DJL CV transform pipeline: `ImageTransformer(pipeline)` applies `Resize`, `Normalize`, `CenterCrop` via NDImageUtils. `transform(bytes)` → `Try[Array[Array[Float]]]`. Requires implicit NDManager.
 
 ## Key Rules
 
@@ -20,11 +22,13 @@ Deep Java Library (DJL) backend — PyTorch/ONNX/TF/MXNet engine support.
 
 ## Test Patterns
 
-- File: `BackendSpec.scala` (5 tests), `ImplicitsSpec.scala` (1 test)
+- Files: `BackendSpec.scala` (5), `ImplicitsSpec.scala` (1), `ZIOApiSpec.scala` (3), `TensorOpsSpec.scala` (4), `ZTokenizerSpec.scala` (2 + 5 ignored), `ImageTransformerSpec.scala` (6)
 - Backend tests verify `Backend.compile(arch) != null` for all layer types + activation combos.
 - Implicits test does `Array[Float] → NDArray → Array[Float]` roundtrip.
 - Need explicit `NDManager` (via `newBaseManager()`) in implicits tests.
-- DJL has fewer integration tests than DL4J (no full fit→predict roundtrip yet).
+- `ZTokenizerSpec` has 5 ignored tests (need HuggingFace model download — requires network).
+- `ImageTransformerSpec` construction tests don't need NDManager; transform tests use `provideLayer(ndmLayer)`.
+- DJL uses `Test / fork := true` because PyTorch native library can only be loaded once per JVM.
 
 ## DJL-Specific Notes
 
@@ -32,3 +36,5 @@ Deep Java Library (DJL) backend — PyTorch/ONNX/TF/MXNet engine support.
 - `predictorRaw()` / `trainerRaw()` escape hatches for custom training loops.
 - DJL releases monthly (~0.36.x). Active maintenance by AWS.
 - GPU requires libtorch shared library (auto-downloaded by DJL).
+- **HuggingFace tokenizers**: Add `"ai.djl.huggingface" % "tokenizers" % djlV` to dependencies for `ZTokenizer`.
+- **Test isolation**: Always use `Test / fork := true` for DJL module tests to avoid native library classloader conflicts.

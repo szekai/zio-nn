@@ -7,6 +7,7 @@ Framework-agnostic neural network definitions and DSL. No backend dependencies.
 - **ModelArchitecture.scala** — Core ADTs: `ModelDef` (enum: Sequential, Functional), `SequentialDef`, `LayerDef` (enum: Dense, LSTM, Output, BatchNorm, Dropout, Conv2D, MaxPool2D, Flatten, Embedding), `AdvancedLayerDef` (enum: GRU, BiDirectional, MultiHeadAttention), `AnyLayer` wrapper, `ActivationFn` (enum: Tanh, ReLU, Sigmoid, Softmax, Identity, LeakyReLU), `LossFn` (enum: MSE, MAE, BinaryCrossEntropy, CategoricalCrossEntropy, Huber), `OptimizerDef` (sealed: Adam, SGD, RMSprop), `FitResult` (case class: loss, epochs)
 - **dsl.scala** — Fluent builder syntax: `Sequential(nInputs)(Layer*)` creates `SequentialDef`, chain `.withOptimizer(Adam(0.001))`, `.withSeed(42L)`, `.build` returns `ModelDef`. Shape-inference: Dense, LSTM, Output, BatchNorm, Dropout, Conv2D, MaxPool2D, Flatten, Embedding, GRU, BiDirectional, MultiHeadAttention. Defaults: Dense → ReLU, Output → MSE+Identity, LSTM → Tanh. Conv2D support via `.withConvInput(h, w, ch)`.
 - **ConfigLoader.scala** — ZIO Config integration. `fromHocon("path")` parses HOCON/YAML `ModelDef` config using raw Typesafe Config (case-insensitive enum parsing). Externalizes architecture definition — no recompilation needed for model changes.
+- **Preprocessing.scala** — Framework-agnostic preprocessing types: `TokenizerConfig` (padding, addSpecialTokens), `EncodingResult` (tokenIds, attentionMask, tokenTypeIds), `ImageTransformDef` (enum: Resize, Normalize, CenterCrop), `ImagePipeline` (seq of ImageTransformDef). Zero backend dependencies — backend implementation is in djl/ and dl4j/.
 
 ## Source Files
 
@@ -15,6 +16,7 @@ Framework-agnostic neural network definitions and DSL. No backend dependencies.
 | ModelArchitecture.scala | `core/src/main/scala/zio/nn/ModelArchitecture.scala` | Core ADTs: ModelDef, LayerDef, ActivationFn, LossFn, OptimizerDef, FitResult |
 | dsl.scala | `core/src/main/scala/zio/nn/dsl.scala` | Fluent builder: Sequential, Dense, LSTM, Output, BatchNorm, Dropout |
 | ConfigLoader.scala | `core/src/main/scala/zio/nn/ConfigLoader.scala` | ZIO Config integration for HOCON/YAML model definitions |
+| Preprocessing.scala | `core/src/main/scala/zio/nn/Preprocessing.scala` | TokenizerConfig, EncodingResult, ImageTransformDef, ImagePipeline |
 
 ## Key Rules
 

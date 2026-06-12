@@ -43,11 +43,13 @@ lazy val djl = project
   .dependsOn(core)
   .settings(
     name := "zio-nn-djl",
+    Test / fork := true,
     libraryDependencies ++= Seq(
       "dev.zio"           %% "zio"             % zioV,
       "dev.zio"           %% "zio-streams"     % zioV,
       "ai.djl"             % "api"             % djlV,
       "ai.djl.pytorch"     % "pytorch-engine"  % djlV,
+      "ai.djl.huggingface" % "tokenizers"      % djlV,
       "dev.zio"           %% "zio-test"        % zioV % Test,
       "dev.zio"           %% "zio-test-sbt"    % zioV % Test
     )

@@ -152,6 +152,8 @@ Sequential(7)(
 | Save | `model.save(path)` | Framework-native format |
 | Load | `ZModel.load(path)` | Auto-detects engine |
 | Close | `model.close()` | Releases native resources |
+| Tokenize | `tok.encode(text): Try[EncodingResult]` | Text → token IDs (see Tokenization section) |
+| Image Transform | `transformer.transform(bytes): Try[Array[Array[Float]]]` | Raw image → float array (see Image Preprocessing section) |
 
 ### DSL Coverage (80% use case)
 
@@ -169,6 +171,29 @@ Sequential(7)(
 | GRU | ✅ | ✅ |
 | BiDirectional (LSTM/GRU) | ✅ | ✅ |
 | MultiHeadAttention | ✅ | ✅ |
+
+### Tokenization
+
+| Feature | DJL | DL4J |
+|---------|-----|------|
+| HuggingFace tokenizer (auto-download) | ✅ | — |
+| Local `tokenizer.json` | ✅ | — |
+| Regex tokenizer | — | ✅ |
+| Whitespace tokenizer | — | ✅ |
+| Batch encode | ✅ | ✅ |
+| Decode (token IDs → text) | ✅ | ✅ |
+| Attention mask | ✅ | — |
+| Token type IDs | ✅ | — |
+| ZIO wrappers (`encodeZ`, `decodeZ`) | ✅ | ✅ |
+
+### Image Preprocessing
+
+| Feature | DJL | DL4J |
+|---------|-----|------|
+| Resize | ✅ | ✅ |
+| Normalize (mean/std) | ✅ | ✅ |
+| CenterCrop | ✅ | ✅ |
+| Pipeline composition (chained transforms) | ✅ | ✅ |
 
 ### GRU vs LSTM
 
@@ -573,3 +598,177 @@ arch.flatMap(a => ZModel.create(a, "from-config"))
 ```
 
 **Benefits:** A/B test architectures without recompilation. Analysts edit HOCON, not Scala.
+
+---
+
+## Tokenization (v0.8.0)
+
+Convert text to token IDs for models with `Embedding` as the first layer. Two backends with different tokenizer strategies:
+
+```scala
+import zio.nn.*
+import zio.nn.dl4j.ZTokenizer        // or zio.nn.djl.ZTokenizer for DJL
+```
+
+### DJL — HuggingFace Tokenizers
+
+Auto-downloads tokenizer files from the HuggingFace hub (Rust tokenizers via DJL):
+
+```scala
+val tok = ZTokenizer.huggingFace("bert-base-uncased").get
+val result = tok.encode("hello world").get
+// result.tokenIds: Array[Int]      — e.g., Array(7592, 2088)
+// result.attentionMask: Option[Array[Int]]  — only when padding = true
+// result.tokenTypeIds: Option[Array[Int]]   — only when addSpecialTokens = true
+
+val decoded = tok.decode(result.tokenIds).get   // "hello world"
+tok.close()
+```
+
+Batch encode multiple texts:
+
+```scala
+val results = tok.batchEncode(Array("hello", "world")).get
+// Array of EncodingResult, one per input text
+```
+
+Load from a local `tokenizer.json` file:
+
+```scala
+val tok = ZTokenizer.fromJson(Path.of("path/to/tokenizer.json")).get
+```
+
+Configuration options:
+
+```scala
+val config = TokenizerConfig(padding = true, addSpecialTokens = true)
+val tok = ZTokenizer.huggingFace("bert-base-uncased", config).get
+```
+
+### DL4J — Regex / Whitespace Tokenizers
+
+Lightweight local tokenizers — no network, no downloads:
+
+```scala
+val tok = ZTokenizer.regex("\\W+").get            // split on non-word chars
+val result = tok.encode("a b c").get               // 3 tokens
+tok.close()
+
+val tok2 = ZTokenizer.whitespace()                 // split on whitespace
+val result2 = tok2.encode("hello world").get       // 2 tokens
+tok2.close()
+```
+
+### ZIO Wrappers
+
+Managed lifecycle with `ZIO.acquireRelease`:
+
+```scala
+import zio.nn.dl4j.zioApi.*   // or zio.nn.djl.zioApi.* for DJL
+
+ZIO.scoped {
+  for
+    tok     <- huggingFaceTokenizer("bert-base-uncased")  // ZIO[Scope, Throwable, ZTokenizer]
+    encoded <- tok.encodeZ("hello world")                  // Task[EncodingResult]
+    decoded <- tok.decodeZ(encoded.tokenIds)                // Task[String]
+  yield decoded
+}
+```
+
+The DJL `huggingFaceTokenizer` and DL4J `regexTokenizer` / `whitespaceTokenizer` factories all return `ZIO[Scope, Throwable, ZTokenizer]` — the tokenizer is automatically closed when the scope ends.
+
+```scala
+// DL4J variants
+regexTokenizer("\\W+")     // ZIO[Scope, Throwable, ZTokenizer]
+whitespaceTokenizer()       // returns ZTokenizer directly (no lifecycle)
+```
+
+### Tokenization + Embedding workflow
+
+```scala
+// 1. Tokenize text
+val tok = ZTokenizer.huggingFace("bert-base-uncased").get
+val tokens = tok.encode("hello world").get.tokenIds
+
+// 2. Create model with Embedding as first layer
+val arch = Sequential(1)(
+  Embedding(30522, 128),   // vocabSize=30522 (bert-base-uncased), dim=128
+  LSTM(64, Tanh),
+  Output(2, Softmax)
+).build
+
+val model = ZModel.create(arch, "text-classifier").get
+
+// 3. Train / predict with token indices
+model.fitInt(Array(tokens), Array(0f), epochs = 5)   // Try[FitResult]
+model.predictInt(Array(tokens))                        // Try[Array[Float]]
+tok.close()
+```
+
+---
+
+## Image Preprocessing (v0.8.0)
+
+Transform raw image bytes into float arrays for vision model inputs. Both backends support composable pipelines:
+
+```scala
+import zio.nn.*
+```
+
+### Pipeline
+
+An `ImagePipeline` chains multiple `ImageTransformDef` steps. The pipeline is applied in order when `ImageTransformer.transform(bytes)` is called:
+
+```scala
+val pipeline = ImagePipeline(
+  ImageTransformDef.Resize(224, 224),
+  ImageTransformDef.Normalize(
+    mean = Array(0.485f, 0.456f, 0.406f),    // ImageNet mean
+    std  = Array(0.229f, 0.224f, 0.225f)     // ImageNet std
+  ),
+  ImageTransformDef.CenterCrop(200, 200)
+)
+```
+
+### Transform
+
+```scala
+import zio.nn.dl4j.ImageTransformer    // or zio.nn.djl.ImageTransformer for DJL
+
+val transformer = ImageTransformer(pipeline)
+val imageBytes: Array[Byte] = Files.readAllBytes(Path.of("image.jpg"))
+val result: Try[Array[Array[Float]]] = transformer.transform(imageBytes)
+// Each inner array is a row of (height * channels) float values
+```
+
+### Available Transforms
+
+| Transform | Description |
+|-----------|-------------|
+| `Resize(height, width)` | Resize image to target dimensions |
+| `Normalize(mean, std)` | Subtract mean, divide by std (channel-wise) |
+| `CenterCrop(height, width)` | Crop center region to target size |
+
+### DJL Notes
+
+The DJL backend uses `NDImageUtils` for transforms and requires an implicit `NDManager`:
+
+```scala
+import zio.nn.djl.ImageTransformer
+import zio.nn.djl.scope.withNDManager
+
+withNDManager { implicit ndm =>
+  val transformer = ImageTransformer(pipeline)
+  val result = transformer.transform(imageBytes)
+  ZIO.attempt(assertTrue(result.isSuccess))
+}
+```
+
+### Example: Simple preprocessing
+
+```scala
+val pipeline = ImagePipeline(ImageTransformDef.Resize(32, 32))
+val transformer = ImageTransformer(pipeline)
+val pixels = transformer.transform(imageBytes).get
+// Array of (32 * 32 * 3) float values, grouped by 32 (width)
+```

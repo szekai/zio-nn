@@ -8,7 +8,9 @@ DeepLearning4j (DL4J) backend — JVM-native training with optional Spark distri
 - **wrappers.scala** — `ZModel` wrapping DL4J `MultiLayerNetwork`. Methods: `create`, `predict`, `fit`, `save`, `load`, `close`. Unified API contract: `predict(Array[Array[Float]])` → `Try[Array[Float]]`.
 - **implicits.scala** — `Array[Float]` ↔ `INDArray` via `.toINDArray`/`.toFloatArray`, `Array[Array[Float]]` ↔ `INDArray` via `.toINDArray`/`.toFloatArrays`. No implicit manager needed (ND4J handles memory).
 - **tensor/** — `TensorOps` for INDArray math. Same operations as DJL TensorOps.
-- **zio.scala** — ZIO-native wrappers: `predictZ`, `predictDoubleZ`, `fitZ`, `predictFlow`, `fitFlow` (ZStream), `predictTimed`, `fitTimed`, `fitWithCheckpoints`.
+- **zio.scala** — ZIO-native wrappers: `predictZ`, `predictDoubleZ`, `fitZ`, `predictFlow`, `fitFlow` (ZStream), `predictTimed`, `fitTimed`, `fitWithCheckpoints`, plus tokenizer wrappers (`regexTokenizer`, `whitespaceTokenizer`, `encodeZ`, `batchEncodeZ`, `decodeZ`).
+- **ZTokenizer.scala** — Regex/whitespace tokenizer: `ZTokenizer.regex(pattern)`, `ZTokenizer.whitespace()`. Methods: `encode`, `batchEncode`, `decode`. No external dependencies — local tokenization only.
+- **ImageTransformer.scala** — ND4J image transform pipeline: `ImageTransformer(pipeline)` applies `Resize`, `Normalize`, `CenterCrop` via Java2D + ND4J. `transform(bytes)` → `Try[Array[Array[Float]]]`. No implicit manager needed.
 
 ## Key Rules
 
@@ -20,12 +22,14 @@ DeepLearning4j (DL4J) backend — JVM-native training with optional Spark distri
 
 ## Test Patterns
 
-- File: `BackendSpec.scala` (6 tests), `ImplicitsSpec.scala` (2 tests), `WrappersSpec.scala` (4 tests), `EdgeCaseSpec.scala` (7 tests), `ZIOApiSpec.scala` (3 tests)
-- Most comprehensive test suite — 22 tests total.
-- Covers: compile, predict, fit, save/load roundtrip, zero epochs, single sample, idempotent close, ZIO Scope management.
+- Files: `BackendSpec.scala` (6), `ImplicitsSpec.scala` (2), `WrappersSpec.scala` (4), `EdgeCaseSpec.scala` (7), `ZIOApiSpec.scala` (3), `ZTokenizerSpec.scala` (4), `ImageTransformerSpec.scala` (3)
+- Most comprehensive test suite — 37 tests total.
+- Covers: compile, predict, fit, save/load roundtrip, zero epochs, single sample, idempotent close, ZIO Scope management, regex/whitespace tokenization, image transform pipeline.
 - `EdgeCaseSpec` is the integration test template: inline random data, temp files with `.deleteOnExit()`, manual `.close()`.
 - `WrappersSpec` verifies unified API signatures (`ZModel.create`, `.predict`, `.fit`).
 - `ZIOApiSpec` verifies `.provideLayer(Scope.default)` resource management.
+- `ZTokenizerSpec` tests regex and whitespace tokenizers with encode/batchEncode/decode roundtrip.
+- `ImageTransformerSpec` tests Resize/Normalize/CenterCrop pipeline on synthetic PNG images.
 
 ## DL4J-Specific Notes
 
