@@ -8,7 +8,6 @@ val dl4jV  = "1.0.0-M2.1"
 
 scalaVersion := scala3
 organization := "io.github.szekai"
-version      := "0.8.0"
 
 homepage     := Some(URI("https://github.com/szekai/zio-nn"))
 licenses     := Seq("Apache-2.0" -> URI("https://www.apache.org/licenses/LICENSE-2.0"))
@@ -21,8 +20,7 @@ scmInfo      := Some(ScmInfo(
   "scm:git:git@github.com:szekai/zio-nn.git"
 ))
 
-publishTo              := Some(MavenRepository("Sonatype", "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2"))
-pomIncludeRepository   := { _ => false }
+// publishTo — managed by sbt-ci-release
 
 // ── Core: framework-agnostic architecture DSL ──────────
 lazy val core = project
