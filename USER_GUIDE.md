@@ -7,7 +7,8 @@ zio-nn has four layers that work together to let you write framework-agnostic ne
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Your Code                                              │
-│  import zio.nn.*                                        │
+│  import zio.nn.dsl.*                                     │
+│  import zio.nn.dl4j.ZModel  // or zio.nn.djl.ZModel      │
 │  val arch = Sequential(7)(LSTM(64), Dense(32), Output(1))│
 │  val model = ZModel.create(arch, "m").get                │
 │  model.predict(features)                                 │
@@ -66,13 +67,16 @@ Each layer type (`LSTM`, `Dense`, `Output`, etc.) has a corresponding implementa
 `ZModel` wraps the native model object and provides the unified API:
 
 ```scala
-// DJL
-val model = ZModel.create(arch, "my-model").get
-// Under the hood: Backend.compile(arch) → Model.newInstance() → ZModel
+import zio.nn.dl4j.ZModel   // or zio.nn.djl.ZModel for DJL
 
 // DL4J
 val model = ZModel.create(arch)
 // Under the hood: Backend.compile(arch) → ZModel.wrap(net)
+
+// DJL
+import zio.nn.djl.ZModel
+val djlModel = ZModel.create(arch, "my-model").get
+// Under the hood: Backend.compile(arch) → Model.newInstance() → ZModel
 ```
 
 `ZModel` manages:
@@ -100,21 +104,22 @@ model.predict(features)  // Array[Array[Float]] → Array[Float]
 model.fit(features, labels, epochs = 50)  // returns FitResult(loss, epochs)
 ```
 
-### 5. SLF4J-style re-exports
+### 5. Backend-specific imports (since v0.9.0)
 
-Each backend module has an `exports.scala` that re-exports its types into the `zio.nn` package:
+Each backend module defines its types (`ZModel`, `Backend`) in its own package:
+
+- `zio.nn.djl.ZModel` and `zio.nn.djl.Backend` for the DJL backend
+- `zio.nn.dl4j.ZModel` and `zio.nn.dl4j.Backend` for the DL4J backend
+
+`import zio.nn.*` provides only the framework-agnostic core types (`ModelDef`, `FitResult`, `ActivationFn`, etc.) from `zio-nn-core`. Backend types require explicit imports:
 
 ```scala
-// djl/exports.scala
-package zio.nn
-export zio.nn.djl.{ZModel, Backend}
-
-// dl4j/exports.scala
-package zio.nn
-export zio.nn.dl4j.{ZModel, Backend}
+import zio.nn.*              // core types only (ModelDef, FitResult, ...)
+import zio.nn.dl4j.ZModel    // backend-specific
+import zio.nn.dl4j.Backend
 ```
 
-When you write `import zio.nn.*`, Scala resolves to whichever backend JAR is on the classpath. Since only one backend is ever present, there are no conflicts.
+**Why this matters**: Earlier versions used `exports.scala` to re-export backend types into `zio.nn.*`, but this caused `NoSuchMethodError` at runtime when both `zio-nn-djl` and `zio-nn-dl4j` were on the classpath. The fix removes the re-exports and requires explicit backend imports — a small ergonomic cost for correct classpath coexistence.
 
 ## Lifecycle
 
@@ -137,7 +142,7 @@ val model = ZModel.create(arch, "m").get
 try { model.predict(features) } finally model.close()
 
 // ZIO Scope (auto-close)
-import zio.nn.zioApi.*
+import zio.nn.dl4j.zioApi.*  // or zio.nn.djl.zioApi.* for DJL
 ZIO.scoped {
   for
     model <- create(arch, "m")
@@ -274,7 +279,7 @@ Adam(0.001), SGD(0.01), RMSprop(0.001)
 ## ZIO-Native API
 
 ```scala
-import zio.nn.zioApi.*
+import zio.nn.dl4j.zioApi.*  // or zio.nn.djl.zioApi.* for DJL
 ZIO.scoped {
   for
     model <- create(arch, "m")          // ZIO[Scope, Throwable, ZModel]

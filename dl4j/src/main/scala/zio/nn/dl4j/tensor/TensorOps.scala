@@ -29,22 +29,67 @@ object TensorOps:
   private def validateShape(targetShape: Array[Long], op: String): Task[Unit] =
     if targetShape.isEmpty then fail(s"$op requires at least one dimension")
     else if targetShape.exists(_ < 0) then fail(s"$op does not support negative dimensions: ${targetShape.mkString("[", ", ", "]")}")
+    else ZIO.unit
+
+  private def validateShape2DOnly(targetShape: Array[Long], op: String): Task[Unit] =
+    if targetShape.isEmpty then fail(s"$op requires at least one dimension")
+    else if targetShape.exists(_ < 0) then fail(s"$op does not support negative dimensions: ${targetShape.mkString("[", ", ", "]")}")
     else if targetShape.length > 2 then fail(s"$op currently supports only 1D or 2D tensors, got rank ${targetShape.length}")
     else ZIO.unit
 
   private def createFromFlat(flat: Array[Double], targetShape: Array[Long], op: String): Task[INDArray] =
     for
       _ <- validateShape(targetShape, op)
+      expSize = targetShape.product.toInt
+      _ <- if flat.length != expSize then fail(s"$op expected $expSize values but received ${flat.length}")
+           else ZIO.unit
       out <- targetShape.length match
         case 1 =>
-          if flat.length != targetShape(0).toInt then fail(s"$op expected ${targetShape(0)} values but received ${flat.length}")
-          else createDouble1D(flat)
+          createDouble1D(flat)
         case 2 =>
           val rows = targetShape(0).toInt
           val cols = targetShape(1).toInt
-          if flat.length != rows * cols then fail(s"$op expected ${rows * cols} values but received ${flat.length}")
-          else createDouble(Array.tabulate(rows, cols)((r, c) => flat(r * cols + c)))
-        case _ => fail(s"$op currently supports only 1D or 2D tensors")
+          createDouble(Array.tabulate(rows, cols)((r, c) => flat(r * cols + c)))
+        case _ => createDoubleNd(flat, targetShape)
+    yield out
+
+  /** Create an N-dimensional tensor from flat data and shape. */
+  def createDoubleNd(data: Array[Double], shape: Array[Long]): Task[INDArray] =
+    ZIO.attemptBlocking {
+      val arr = Nd4j.create(data)
+      arr.reshape(shape.map(_.toInt).toArray)
+    }
+
+  /** Reshape tensor to new shape. Total elements must match. */
+  def reshape(a: INDArray, newShape: Array[Long]): Task[INDArray] =
+    ZIO.attemptBlocking {
+      a.reshape(newShape.map(_.toInt).toArray)
+    }
+
+  /** Remove dimension of size 1 at position dim. */
+  def squeeze(a: INDArray, dim: Int): Task[INDArray] =
+    for
+      s <- shape(a)
+      _ <-
+        if dim < 0 || dim >= s.length then fail(s"squeeze dim $dim out of bounds for shape [${s.mkString(", ")}]")
+        else if s(dim) != 1 then fail(s"squeeze requires dim $dim to have size 1, got ${s(dim)}")
+        else ZIO.unit
+      values  <- toDoubleArray(a)
+      newShape = s.indices.filter(_ != dim).map(i => s(i)).toArray
+      out     <- createFromFlat(values, newShape, "squeeze")
+    yield out
+
+  /** Add dimension of size 1 at position dim. */
+  def unsqueeze(a: INDArray, dim: Int): Task[INDArray] =
+    for
+      s <- shape(a)
+      targetDim = if dim < 0 then s.length + dim + 1 else dim
+      _ <-
+        if targetDim < 0 || targetDim > s.length then fail(s"unsqueeze dim $dim out of bounds for shape [${s.mkString(", ")}]")
+        else ZIO.unit
+      values  <- toDoubleArray(a)
+      newShape = (s.take(targetDim) :+ 1L) ++ s.drop(targetDim)
+      out     <- createFromFlat(values, newShape, "unsqueeze")
     yield out
 
   private def normalizedBound(start: Long, end: Long, size: Long, axis: Int, op: String): Task[(Int, Int)] =
