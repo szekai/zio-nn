@@ -2,7 +2,7 @@ package zio.nn.djl
 
 import zio.*
 import zio.stream.*
-import zio.nn.FitResult
+import zio.nn.{EncodingResult, FitResult}
 import java.nio.file.Path
 
 object zioApi:
@@ -69,6 +69,23 @@ object zioApi:
           epochs = epochs,
           saveEvery = saveEvery
         )
+
+  // ── ZTokenizer ZIO wrappers ────────────────────────────────────────────
+  extension (tok: ZTokenizer)
+    def encodeZ(text: String): Task[EncodingResult] =
+      ZIO.attemptBlocking(tok.encode(text).get)
+
+    def batchEncodeZ(texts: Array[String]): Task[Array[EncodingResult]] =
+      ZIO.attemptBlocking(tok.batchEncode(texts).get)
+
+    def decodeZ(tokens: Array[Int]): Task[String] =
+      ZIO.attemptBlocking(tok.decode(tokens).get)
+
+  def huggingFaceTokenizer(
+    modelName: String,
+    config: zio.nn.TokenizerConfig = zio.nn.TokenizerConfig()
+  ): ZIO[Scope, Throwable, ZTokenizer] =
+    ZIO.acquireRelease(ZIO.attemptBlocking(ZTokenizer.huggingFace(modelName, config).get))(m => ZIO.attemptBlocking(m.close()).orDie)
 
   def create(arch: zio.nn.ModelDef, name: String = "model", engine: String = "PyTorch"): ZIO[Scope, Throwable, ZModel] =
     ZIO.acquireRelease(ZIO.attemptBlocking(ZModel.create(arch, name, engine).get))(m => ZIO.attemptBlocking(m.close()).orDie)

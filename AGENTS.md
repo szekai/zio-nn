@@ -7,18 +7,18 @@ Write-once neural network library for ZIO. Swap DJL ↔ DL4J by changing one JAR
 | Directory | Scala Sources | Tests | Score | AGENTS.md |
 |-----------|--------------|-------|-------|-----------|
 | root      | (config/build) | — | HIGH | ✅ (this file) |
-| core/     | 3 (ModelArchitecture, dsl, ConfigLoader) | 2 files, 22 tests | HIGH | ✅ |
-| djl/      | 6 (Backend, implicits, scope, tensor/, wrappers, zio) | 2 files, 6 tests | HIGH | ✅ |
-| dl4j/     | 5 (Backend, implicits, tensor/, wrappers, zio) | 5 files, 22 tests | HIGH | ✅ |
+| core/     | 4 (ModelArchitecture, dsl, ConfigLoader, Preprocessing) | 2 files, 22 tests | HIGH | ✅ |
+| djl/      | 8 (Backend, implicits, scope, tensor/, wrappers, zio, ZTokenizer, ImageTransformer) | 6 files, 20 tests | HIGH | ✅ |
+| dl4j/     | 7 (Backend, implicits, tensor/, wrappers, zio, ZTokenizer, ImageTransformer) | 8 files, 37 tests | HIGH | ✅ |
 | embeddings/ | 1 (Word2Vec) | 0 files, 0 tests | MEDIUM | ❌ |
 | macros/   | 0 | 0 | LOW | ❌ |
 | project/  | 0 (SBT config only) | 0 | LOW | ❌ |
 
 ## Architecture Overview
 
-- **core/** — Framework-agnostic: `ModelDef`, `LayerDef`, `ActivationFn`, `LossFn`, `OptimizerDef`, DSL (`dsl.*`), `ConfigLoader`
-- **djl/** — Deep Java Library backend: `ZModel` wrapping `ZooModel`, `Backend.compile` → DJL `Block`, `TensorOps` for NDArray math, `scope.withNDManager` for resource mgmt
-- **dl4j/** — DeepLearning4j backend: `ZModel` wrapping `MultiLayerNetwork`, `Backend.compile` → DL4J `MultiLayerNetwork`, `TensorOps` for INDArray math
+- **core/** — Framework-agnostic: `ModelDef`, `LayerDef`, `ActivationFn`, `LossFn`, `OptimizerDef`, DSL (`dsl.*`), `ConfigLoader`, `TokenizerConfig`, `EncodingResult`, `ImageTransformDef`, `ImagePipeline`
+- **djl/** — Deep Java Library backend: `ZModel` wrapping `ZooModel`, `Backend.compile` → DJL `Block`, `TensorOps` for NDArray math, `scope.withNDManager` for resource mgmt, `ZTokenizer` (HuggingFace), `ImageTransformer` (DJL CV)
+- **dl4j/** — DeepLearning4j backend: `ZModel` wrapping `MultiLayerNetwork`, `Backend.compile` → DL4J `MultiLayerNetwork`, `TensorOps` for INDArray math, `ZTokenizer` (regex/whitespace), `ImageTransformer` (ND4J)
 
 All backends export into `zio.nn` via package objects. User code imports `zio.nn.*` and `zio.nn.dsl.*`.
 

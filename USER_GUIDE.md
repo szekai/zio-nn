@@ -299,18 +299,84 @@ priceStream.via(model.predictFlow).runCollect
 dataStream.via(model.fitFlow(epochs = 1)).runDrain
 ```
 
-## Tensor Operations
+## Tokenization
+
+Convert text to token IDs for models with `Embedding` as the first layer.
+
+### DJL — HuggingFace Tokenizers
 
 ```scala
-import zio.nn.TensorOps.*
-for
-  a <- create(Array(Array(1f,2f), Array(3f,4f)))
-  b <- create(Array(Array(0.5f,0.5f), Array(0.5f,0.5f)))
-  c <- add(a, b)        // element-wise
-  d <- matMul(a, b)     // matrix multiply
-  e <- toDoubleArray(d)
-yield e
+import zio.nn.djl.ZTokenizer
+
+// Auto-download from HuggingFace hub
+val tok = ZTokenizer.huggingFace("bert-base-uncased").get
+val result = tok.encode("hello world").get
+// result.tokenIds: Array[Int]
+// result.attentionMask: Option[Array[Int]]
+// result.tokenTypeIds: Option[Array[Int]]
+
+// Decode back
+val decoded = tok.decode(result.tokenIds).get
+tok.close()
 ```
+
+### DL4J — Regex / Whitespace Tokenizers
+
+```scala
+import zio.nn.dl4j.ZTokenizer
+
+// Regex tokenizer — split on non-word characters
+val tok = ZTokenizer.regex("\\W+").get
+val result = tok.encode("a b c").get     // 3 tokens
+tok.close()
+
+// Whitespace tokenizer — split on spaces
+val tok2 = ZTokenizer.whitespace()
+tok2.encode("hello world").get.tokenIds // 2 tokens
+tok2.close()
+```
+
+### ZIO Wrappers
+
+```scala
+import zio.nn.dl4j.zioApi.*  // or zio.nn.djl.zioApi.* for DJL
+
+ZIO.scoped {
+  for
+    tok     <- huggingFaceTokenizer("bert-base-uncased")  // auto-closed
+    encoded <- tok.encodeZ("hello world")
+    decoded <- tok.decodeZ(encoded.tokenIds)
+  yield decoded
+}
+```
+
+## Image Preprocessing
+
+Transform raw image bytes into float arrays for vision model inputs.
+
+```scala
+import zio.nn.*
+import zio.nn.dl4j.ImageTransformer    // or zio.nn.djl.ImageTransformer
+
+// Build a transformation pipeline
+val pipeline = ImagePipeline(
+  ImageTransformDef.Resize(224, 224),
+  ImageTransformDef.Normalize(
+    mean = Array(0.485f, 0.456f, 0.406f),
+    std  = Array(0.229f, 0.224f, 0.225f)
+  ),
+  ImageTransformDef.CenterCrop(200, 200)
+)
+
+// Apply to raw image bytes
+val transformer = ImageTransformer(pipeline)
+val pixels: Try[Array[Array[Float]]] =
+  transformer.transform(Files.readAllBytes(Path.of("image.jpg")))
+```
+
+Available transforms: `Resize(height, width)`, `Normalize(mean, std)`, `CenterCrop(height, width)`.
+
+## Tensor Operations
 
 ## Implicit Conversions
 

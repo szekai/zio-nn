@@ -2,7 +2,7 @@ package zio.nn.dl4j
 
 import zio.*
 import zio.stream.*
-import zio.nn.FitResult
+import zio.nn.{EncodingResult, FitResult}
 import java.io.File
 
 object zioApi:
@@ -69,6 +69,27 @@ object zioApi:
           epochs = epochs,
           saveEvery = saveEvery
         )
+
+  // ── ZTokenizer ZIO wrappers ────────────────────────────────────────────
+  extension (tok: ZTokenizer)
+    def encodeZ(text: String): Task[EncodingResult] =
+      ZIO.attemptBlocking(tok.encode(text).get)
+
+    def batchEncodeZ(texts: Array[String]): Task[Array[EncodingResult]] =
+      ZIO.attemptBlocking(tok.batchEncode(texts).get)
+
+    def decodeZ(tokens: Array[Int]): Task[String] =
+      ZIO.attemptBlocking(tok.decode(tokens).get)
+
+  def regexTokenizer(
+    pattern: String = "\\W+",
+    config: zio.nn.TokenizerConfig = zio.nn.TokenizerConfig()
+  ): ZIO[Scope, Throwable, ZTokenizer] =
+    ZIO.acquireRelease(ZIO.attemptBlocking(ZTokenizer.regex(pattern, config).get))(m => ZIO.attemptBlocking(m.close()).orDie)
+
+  def whitespaceTokenizer(
+    config: zio.nn.TokenizerConfig = zio.nn.TokenizerConfig()
+  ): ZTokenizer = ZTokenizer.whitespace(config)
 
   def create(arch: zio.nn.ModelDef): ZIO[Scope, Throwable, ZModel] =
     ZIO.acquireRelease(ZIO.attemptBlocking(ZModel.create(arch)))(m => ZIO.attemptBlocking(m.close()).orDie)
