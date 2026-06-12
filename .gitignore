@@ -10,4 +10,5 @@ project/project/
 models/
 .DS_Store
 _site/
+.bsp/
 .sisyphus/
