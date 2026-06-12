@@ -10,7 +10,8 @@ import zio.nn.dsl.*
 val arch = Sequential(7)(LSTM(64, Tanh), Dense(32, ReLU), Output(1, MSE)).build
 
 // Create model — same for both backends
-import zio.nn.*
+import zio.nn.dl4j.ZModel    // or zio.nn.djl.ZModel for DJL
+import zio.nn.dl4j.Backend   // or zio.nn.djl.Backend for DJL
 val model = ZModel.create(arch, "my-model").get
 
 // Predict / Train — same for both backends
@@ -59,7 +60,7 @@ val arch2 = Sequential(10)(
 ### 2. Create model
 
 ```scala
-import zio.nn.*
+import zio.nn.dl4j.ZModel   // or zio.nn.djl.ZModel for DJL
 
 val model = ZModel.create(arch, "my-model") match
   case Success(m) => m
@@ -271,7 +272,7 @@ val model = ZModel.create(arch, "m").get
 try { /* use model */ } finally model.close()
 
 // ZIO-native (Scope-based, v0.3.0+)
-import zio.nn.zioApi.*
+import zio.nn.dl4j.zioApi.*  // or zio.nn.djl.zioApi.* for DJL
 ZIO.scoped {
   for
     model <- create(arch, "m")           // auto-closed by Scope
@@ -336,10 +337,9 @@ val arch = FunctionalDef(
 
 ## Contributing
 
-Add a new backend in 3 files:
+Add a new backend in 2 files (core types from `zio-nn-core` are always on the classpath):
 1. `Backend.scala` — `ModelDef` → framework Block (~50 lines)
 2. `wrappers.scala` — `ZModel` with `predict()`/`fit()` (~80 lines)
-3. `exports.scala` — `export` into `zio.nn` package (1 line)
 
 ---
 

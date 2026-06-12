@@ -103,7 +103,7 @@ object Backend:
                 val arrays = multi.flatMap(s => values.get(s).map(_.singletonOrThrow()))
                 if arrays.isEmpty then new NDList()
                 else if arrays.length == 1 then new NDList(arrays.head)
-                else new NDList(ai.djl.ndarray.NDArrays.concat(new NDList(arrays: _*)))
+                else new NDList(ai.djl.ndarray.NDArrays.concat(new NDList(arrays*)))
 
             val output = block.forward(ps, blockInput, false)
             values(node) = output
