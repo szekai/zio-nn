@@ -6,6 +6,9 @@ on:
     branches: [main]
     tags: ["v*"]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -16,7 +19,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 25
       - uses: sbt/setup-sbt@v1
       - run: sbt test
 
@@ -31,7 +34,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 25
       - uses: sbt/setup-sbt@v1
       - run: sbt ci-release
         env:
