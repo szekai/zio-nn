@@ -110,9 +110,9 @@ object zioApi:
         case _ => false
       }
 
-      def loop(epoch: Int, history: List[Double], currentLr: Float): ZIO[Any, Throwable, FitResult] =
+      def loop(epoch: Int, history: List[Double], currentLr: Float, lastValLoss: Option[Double]): ZIO[Any, Throwable, FitResult] =
         if epoch > epochs then
-          val result = FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history)
+          val result = FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history, validationLoss = lastValLoss)
           fire(TrainingEvent.TrainEnd(result)).as(result)
         else
           for
@@ -121,22 +121,22 @@ object zioApi:
             elapsed     <- Clock.nanoTime.map(ns => (ns - start) / 1000000)
             loss         = epochResult.loss
             _           <- fire(TrainingEvent.EpochEnd(epoch, loss, elapsed))
-            _           <- ZIO.foreachDiscard(validationDs) { vDs =>
-                            ZIO.attemptBlocking(model.underlying.score(vDs)).flatMap { vLoss =>
-                              fire(TrainingEvent.ValidationEnd(epoch, vLoss))
-                            }
-                          }
+            newValLoss  <- ZIO.foldLeft(validationDs)(lastValLoss) { (_, vDs) =>
+                             ZIO.attemptBlocking(model.underlying.score(vDs)).flatMap { vLoss =>
+                               fire(TrainingEvent.ValidationEnd(epoch, vLoss)).as(Some(vLoss))
+                             }
+                           }
             nextLr       = lrSchedule(epoch, currentLr)
             nextHistory  = history :+ loss
             result      <-
               if isStopped then
-                val fr = FitResult(loss, epoch, nextHistory)
+                val fr = FitResult(loss, epoch, nextHistory, validationLoss = newValLoss)
                 fire(TrainingEvent.TrainEnd(fr)).as(fr)
               else
-                loop(epoch + 1, nextHistory, nextLr)
+                loop(epoch + 1, nextHistory, nextLr, newValLoss)
           yield result
 
-      loop(1, Nil, lr)
+      loop(1, Nil, lr, None)
 
     /** Train with automatic validation split and early stopping.
       *

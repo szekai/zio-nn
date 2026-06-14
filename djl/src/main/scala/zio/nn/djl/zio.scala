@@ -90,7 +90,8 @@ object zioApi:
       epochs: Int,
       lr: Float = 0.001f,
       callbacks: List[TrainingCallback] = Nil,
-      lrSchedule: (Int, Float) => Float = LRSchedule.fixed
+      lrSchedule: (Int, Float) => Float = LRSchedule.fixed,
+      validationData: Option[(Array[Array[Float]], Array[Float])] = None
     ): ZIO[Any, Throwable, FitResult] =
       def fire(event: TrainingEvent): UIO[Unit] =
         ZIO.foreachDiscard(callbacks)(_.onEvent(event))
@@ -100,9 +101,9 @@ object zioApi:
         case _ => false
       }
 
-      def loop(epoch: Int, history: List[Double], currentLr: Float): ZIO[Any, Throwable, FitResult] =
+      def loop(epoch: Int, history: List[Double], currentLr: Float, lastValLoss: Option[Double]): ZIO[Any, Throwable, FitResult] =
         if epoch > epochs then
-          val result = FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history)
+          val result = FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history, validationLoss = lastValLoss)
           fire(TrainingEvent.TrainEnd(result)).as(result)
         else
           for
@@ -110,18 +111,21 @@ object zioApi:
             epochResult <- ZIO.attemptBlocking(model.fit(features, labels, 1, currentLr).get)
             elapsed     <- Clock.nanoTime.map(ns => (ns - start) / 1000000)
             loss         = epochResult.loss
+            newValLoss  <- ZIO.foldLeft(validationData)(lastValLoss) { (_, vd) =>
+                            fire(TrainingEvent.ValidationEnd(epoch, Double.NaN)).as(lastValLoss)
+                          }
             _           <- fire(TrainingEvent.EpochEnd(epoch, loss, elapsed))
             nextLr       = lrSchedule(epoch, currentLr)
             nextHistory  = history :+ loss
             result      <-
               if isStopped then
-                val fr = FitResult(loss, epoch, nextHistory)
+                val fr = FitResult(loss, epoch, nextHistory, validationLoss = newValLoss)
                 fire(TrainingEvent.TrainEnd(fr)).as(fr)
               else
-                loop(epoch + 1, nextHistory, nextLr)
+                loop(epoch + 1, nextHistory, nextLr, newValLoss)
           yield result
 
-      loop(1, Nil, lr)
+      loop(1, Nil, lr, None)
 
     /** Train with automatic validation split and early stopping (DL4J preferred).
       * For DJL backend, this trains without validation splitting.
