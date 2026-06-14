@@ -293,6 +293,111 @@ MSE, MAE, BinaryCrossEntropy, CategoricalCrossEntropy, Huber
 Adam(0.001), SGD(0.01), RMSprop(0.001)
 ```
 
+### LayerNorm
+
+Layer normalization — normalizes across the feature dimension:
+
+```scala
+import zio.nn.dsl.*
+
+val arch = Sequential(512)(
+  Dense(512, ReLU),
+  LayerNorm,                          // normalizes activations
+  Output(10, Softmax)
+).build
+```
+
+- DL4J: not available (DL4J 1.0.0-M2.1 lacks LayerNorm). Use DJL backend.
+- DJL: compiles to native `LayerNorm` block.
+
+### TransformerEncoder
+
+Full transformer encoder block — stacks of self-attention + feed-forward with residual connections:
+
+```scala
+import zio.nn.dsl.*
+
+val arch = Sequential(512)(
+  TransformerEncoder(dim = 512, numHeads = 8, ffDim = 2048, numLayers = 2, dropout = 0.1),
+  Output(10, Softmax)
+).build
+```
+
+Parameters: `dim` (model dimension), `numHeads` (attention heads), `ffDim` (feed-forward hidden size), `numLayers` (stack count), `dropout`.
+
+- DL4J: not available — use DJL backend or compose manually via `FunctionalDef`.
+- DJL: compiles to native `TransformerEncoderBlock` per layer.
+
+## Advanced Training: Callbacks & Early Stopping
+
+ZIO-native training hooks for per-epoch logging, early stopping, and LR scheduling:
+
+```scala
+import zio.nn.*
+
+// Log epoch metrics
+val logger = new TrainingCallback {
+  def onEvent(event: TrainingEvent) = event match
+    case TrainingEvent.EpochEnd(epoch, loss, ms) =>
+      ZIO.logInfo(s"Epoch $epoch: loss=$loss (${ms}ms)")
+    case TrainingEvent.TrainEnd(result) =>
+      ZIO.logInfo(s"Done: ${result.epochs} epochs, final loss=${result.loss}")
+    case _ => ZIO.unit
+}
+
+// Early stopping — stops when validation loss plateaus
+val earlyStop = EarlyStopping(patience = 5, minDelta = 0.001)
+
+// Cosine LR scheduling
+val cosineLR = LRSchedule.cosine(minLr = 0.0001f, maxLr = 0.01f, cycleLength = 10)
+
+// Combine everything
+import zio.nn.dl4j.zioApi.*
+ZIO.scoped {
+  create(arch).flatMap { model =>
+    model.fitWithCallbacksZ(feats, labels, 100,
+      callbacks = List(logger, earlyStop),
+      lrSchedule = cosineLR,
+      validationData = Some((valFeats, valLabels)))
+  }
+}
+```
+
+`fit()` now returns per-epoch loss history:
+
+```scala
+val result = model.fit(features, labels, 50).get
+result.lossHistory.length  // 50 — one per epoch
+result.validationLoss      // Some(0.123) if validation data provided
+```
+
+## Batch Data Loading: DataSetLoader
+
+ZIO Stream pipeline from files on disk → transform → batched arrays → model:
+
+```scala
+import zio.nn.*, zio.nn.dl4j.zioApi.*
+import java.nio.file.Path
+
+// Image classification
+val pipeline = ImagePipeline(Resize(28, 28), Normalize(mnistMean, mnistStd))
+DataSetLoader.fromImageDir(Path.of("data/train"), pipeline, batchSize = 64) {
+  (bytes, pl) => ImageTransformer(pl).transform(bytes)
+}.flatMap { loader =>
+  loader.batches.via(model.fitFlow(epochs = 1)).runCollect
+}
+
+// Text classification with Word2Vec
+val tok = w2v.toTokenizer()
+DataSetLoader.fromTextDir(Path.of("data/imdb/train"), batchSize = 32) {
+  (text, _) => tok.encode(text).map(_.tokenIds)
+}.flatMap { loader =>
+  loader.batches.via(model.fitFlow).runCollect
+}
+```
+
+Labels are extracted automatically from parent directory names (`LabelExtractor.fromParentDir`).
+
 ## ZIO-Native API
 
 ```scala
