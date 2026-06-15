@@ -33,6 +33,7 @@ lazy val core = project
       "dev.zio" %% "zio-config"             % "4.0.4",
       "dev.zio" %% "zio-config-typesafe"    % "4.0.4",
       "dev.zio" %% "zio-config-magnolia"    % "4.0.4",
+      "dev.zio" %% "zio-json"              % "0.7.3",
       "dev.zio" %% "zio-test"               % zioV % Test,
       "dev.zio" %% "zio-test-sbt"           % zioV % Test
     )
