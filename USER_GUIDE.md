@@ -278,6 +278,36 @@ val raw: WordVectors = w2v.vectors
 val iter = new DataSetIteratorWord2Vec(dataDir, raw, batch, trunc, train)
 ```
 
+### DL4J → ONNX Export
+
+DL4J models can be exported to ONNX protobuf format without any protobuf-java dependency. The ONNX binary is written by hand using the protobuf wire format (`DataOutputStream`).
+
+```scala
+import zio.nn.dl4j.Dl4jToOnnx
+import java.nio.file.Path
+
+// Export to byte array
+val bytes = Dl4jToOnnx.toOnnx(model.underlying)       // Try[Array[Byte]]
+
+// Export directly to file
+Dl4jToOnnx.saveToFile(model.underlying, Path.of("model.onnx"))  // Try[Unit]
+
+// Or via the ZModel companion
+ZModel.toOnnx(model.underlying, Path.of("model.onnx"))           // Try[Unit]
+
+// ZIO variant
+import zio.nn.dl4j.zioApi.*
+ZIO.scoped {
+  create(arch, "m").flatMap(_.toOnnxZ(Path.of("model.onnx")))   // Task[Unit]
+}
+```
+
+**Supported layers:** Dense, Output, LSTM, Bidirectional, Embedding, BatchNormalization, Dropout (identity at inference), RnnOutputLayer.
+
+**Not supported:** GRU, MultiHeadAttention, Conv2D, MaxPool2D, Flatten, LayerNorm.
+
+The exported ONNX file can be loaded with DJL's `OnnxRuntime` engine for inference on GPU or edge devices.
+
 DJL users: export PyTorch `nn.Embedding` as ONNX, load via `ZModel.load(path, engine="OnnxRuntime")`.
 
 ### Activations, Losses, Optimizers
@@ -292,6 +322,27 @@ MSE, MAE, BinaryCrossEntropy, CategoricalCrossEntropy, Huber
 // Optimizers
 Adam(0.001), SGD(0.01), RMSprop(0.001)
 ```
+
+### Pure Computation Methods (v0.10.0)
+
+`ActivationFn` and `LossFn` now carry pure computation methods — no backend needed:
+
+```scala
+import zio.nn.*
+
+// Activation functions
+ActivationFn.ReLU.apply(-1.0)                          // 0.0
+ActivationFn.Sigmoid.apply(0.0)                         // 0.5
+ActivationFn.Tanh.derivative(0.5)                       // matches 1 - tanh²(x)
+ActivationFn.Softmax.applyVector(Array(2.0, 1.0, 0.1))  // sums to 1.0
+
+// Loss functions
+LossFn.MSE.compute(Array(0.0, 2.0), Array(1.0, 2.0))   // 0.5
+LossFn.MAE.compute(Array(1.0, 3.0), Array(4.0, 5.0))   // 2.5
+LossFn.BinaryCrossEntropy.compute(Array(0.9), Array(1.0)) // ~0.105
+```
+
+These are useful for evaluation, monitoring, and debugging without needing a GPU or backend framework. The issue specification details are in [#27](https://github.com/szekai/zio-nn/issues/27).
 
 ### LayerNorm
 
@@ -371,6 +422,42 @@ result.lossHistory.length  // 50 — one per epoch
 result.validationLoss      // Some(0.123) if validation data provided
 ```
 
+## Evaluation Metrics (v0.10.0)
+
+Built-in classification metrics and `evaluate()` on ZModel:
+
+```scala
+import zio.nn.*
+
+// Available metrics
+EvalMetric.Accuracy
+EvalMetric.Precision(posLabel = 1.0)
+EvalMetric.Recall(posLabel = 1.0)
+EvalMetric.F1(posLabel = 1.0)
+
+// Direct computation (pure, no model needed)
+val pred = Array(0.9, 0.1, 0.8)
+val actual = Array(1.0, 0.0, 1.0)
+EvalMetric.Accuracy.compute(pred, actual)  // 1.0 (perfect)
+EvalMetric.F1().compute(pred, actual)      // 1.0
+
+// Evaluate on a model (both backends)
+import zio.nn.dl4j.ZModel
+val model = ZModel.create(arch).get
+model.evaluate(features, labels, List(EvalMetric.Accuracy, EvalMetric.F1()))
+// Returns: Map("accuracy" → 0.87, "f1(pos=1.0)" → 0.85)
+
+// ZIO variant
+import zio.nn.dl4j.zioApi.*
+ZIO.scoped {
+  create(arch).flatMap { model =>
+    model.evaluateZ(feats, labels, List(EvalMetric.Accuracy))
+  }
+}
+```
+
+Multi-class support: when the model output dimension > 1, the flat predictions are reshaped to `(samples, classes)` and argmax is applied before computing each metric. The issue specification details are in [#29](https://github.com/szekai/zio-nn/issues/29).
+
 ## Batch Data Loading: DataSetLoader
 
 ZIO Stream pipeline from files on disk → transform → batched arrays → model:
@@ -397,6 +484,42 @@ DataSetLoader.fromTextDir(Path.of("data/imdb/train"), batchSize = 32) {
 ```
 
 Labels are extracted automatically from parent directory names (`LabelExtractor.fromParentDir`).
+
+## Checkpoint Load/Resume (v0.10.0)
+
+`fitWithCheckpoints` saves periodic model snapshots. The checkpoint utilities let you inspect, resume, and clean them:
+
+```scala
+import zio.nn.dl4j.zioApi.*  // or zio.nn.djl.zioApi.* for DJL
+
+ZIO.scoped {
+  create(arch).flatMap { model =>
+    // Train with checkpoints
+    _ <- model.fitWithCheckpoints(feats, labels, 100,
+           saveEvery = 10, checkpointPath = "models/lstm")
+    // Creates: models/lstm-epoch10, models/lstm-epoch20, ...
+  }
+}
+
+// List all checkpoints
+listCheckpoints("models/lstm")        // Task[List[TrainingCheckpoint]]
+// Returns sorted by epoch ascending
+
+// Read a single checkpoint's metadata
+loadCheckpoint("models/lstm-epoch10") // Task[TrainingCheckpoint]
+
+// Resume training from the latest checkpoint
+ZIO.scoped {
+  resumeFromCheckpoint("models/lstm").flatMap { case (loaded, cp) =>
+    loaded.fitZ(moreFeats, moreLabels, epochs = 10)
+  }
+}
+
+// Keep latest N, delete the rest
+cleanCheckpoints("models/lstm", keep = 3)  // Task[Unit]
+```
+
+The `TrainingCheckpoint` case class carries epoch number, file path, metadata map, and timestamp. The issue specification details are in [#28](https://github.com/szekai/zio-nn/issues/28).
 
 ## ZIO-Native API
 

@@ -83,12 +83,65 @@ enum BidirectionalKind:
 enum ActivationFn:
   case Tanh, ReLU, Sigmoid, Softmax, Identity, LeakyReLU
 
+  /** Apply the activation function to a single value. */
+  def apply(x: Double): Double = this match
+    case Tanh     => math.tanh(x)
+    case ReLU     => math.max(0, x)
+    case Sigmoid  => 1.0 / (1.0 + math.exp(-x))
+    case Softmax  => throw UnsupportedOperationException("Softmax requires a vector input — use applyVector")
+    case Identity => x
+    case LeakyReLU => if x > 0 then x else 0.01 * x
+
+  /** Apply the activation function to a full vector (needed for Softmax). */
+  def applyVector(x: Array[Double]): Array[Double] = this match
+    case Softmax =>
+      val max = x.max; val exps = x.map(v => math.exp(v - max)); val sum = exps.sum
+      exps.map(_ / sum)
+    case _ => x.map(apply)
+
+  /** Derivative of the activation function at point x.
+    * Note: For Softmax, use the Jacobian — this returns 1.0 (identity)
+    * since the full Jacobian is expensive and rarely needed standalone.
+    */
+  def derivative(x: Double): Double = this match
+    case ReLU     => if x > 0 then 1.0 else 0.0
+    case Sigmoid  => { val s = apply(x); s * (1.0 - s) }
+    case Tanh     => 1.0 - math.pow(apply(x), 2)
+    case Identity => 1.0
+    case LeakyReLU => if x > 0 then 1.0 else 0.01
+    case Softmax  => 1.0 // identity — full Jacobian via applyVector
+
 // ═══════════════════════════════════════════════════════════
 //  Loss Functions
 // ═══════════════════════════════════════════════════════════
 
 enum LossFn:
   case MSE, MAE, BinaryCrossEntropy, CategoricalCrossEntropy, Huber
+
+  /** Compute the loss value between predicted and actual values.
+    * Both arrays must have the same length.
+    */
+  def compute(predicted: Array[Double], actual: Array[Double]): Double = this match
+    case MSE =>
+      predicted.zip(actual).map((p, a) => math.pow(p - a, 2)).sum / predicted.length
+    case MAE =>
+      predicted.zip(actual).map((p, a) => math.abs(p - a)).sum / predicted.length
+    case BinaryCrossEntropy =>
+      -actual.zip(predicted).map { (a, p) =>
+        val clipped = math.min(math.max(p, 1e-15), 1.0 - 1e-15)
+        a * math.log(clipped) + (1 - a) * math.log(1 - clipped)
+      }.sum / predicted.length
+    case CategoricalCrossEntropy =>
+      -actual.zip(predicted).map { (a, p) =>
+        val clipped = math.min(math.max(p, 1e-15), 1.0)
+        a * math.log(clipped)
+      }.sum
+    case Huber =>
+      val delta = 1.0
+      predicted.zip(actual).map { (p, a) =>
+        val diff = math.abs(p - a)
+        if diff <= delta then 0.5 * diff * diff else delta * (diff - 0.5 * delta)
+      }.sum / predicted.length
 
 // ═══════════════════════════════════════════════════════════
 //  Optimizers
@@ -165,6 +218,48 @@ case class FitResult(
   validationLoss: Option[Double] = None
 )
 
+// ═══════════════════════════════════════════════════════════
+//  Evaluation Metrics
+// ═══════════════════════════════════════════════════════════
+
+/** Evaluation metric for classification models.
+  * Compute a single scalar metric from predicted and actual values.
+  * Both arrays must have the same length.
+  */
+sealed trait EvalMetric:
+  def compute(predicted: Array[Double], actual: Array[Double]): Double
+  def name: String
+
+object EvalMetric:
+  case object Accuracy extends EvalMetric:
+    def compute(predicted: Array[Double], actual: Array[Double]): Double =
+      predicted.zip(actual).count((p, a) => (p > 0.5) == (a > 0.5)).toDouble / predicted.length
+    def name = "accuracy"
+
+  case class Precision(posLabel: Double = 1.0) extends EvalMetric:
+    def compute(predicted: Array[Double], actual: Array[Double]): Double =
+      val tp = predicted.zip(actual).count((p, a) => p > 0.5 && a == posLabel)
+      val fp = predicted.zip(actual).count((p, a) => p > 0.5 && a != posLabel)
+      if tp + fp == 0 then 0.0 else tp.toDouble / (tp + fp)
+    def name = s"precision(pos=$posLabel)"
+
+  case class Recall(posLabel: Double = 1.0) extends EvalMetric:
+    def compute(predicted: Array[Double], actual: Array[Double]): Double =
+      val tp = predicted.zip(actual).count((p, a) => p > 0.5 && a == posLabel)
+      val fn = predicted.zip(actual).count((p, a) => p <= 0.5 && a == posLabel)
+      if tp + fn == 0 then 0.0 else tp.toDouble / (tp + fn)
+    def name = s"recall(pos=$posLabel)"
+
+  case class F1(posLabel: Double = 1.0) extends EvalMetric:
+    def compute(predicted: Array[Double], actual: Array[Double]): Double =
+      val tp = predicted.zip(actual).count((p, a) => p > 0.5 && a == posLabel).toDouble
+      val fp = predicted.zip(actual).count((p, a) => p > 0.5 && a != posLabel).toDouble
+      val fn = predicted.zip(actual).count((p, a) => p <= 0.5 && a == posLabel).toDouble
+      val precision = if tp + fp == 0 then 0.0 else tp / (tp + fp)
+      val recall    = if tp + fn == 0 then 0.0 else tp / (tp + fn)
+      if precision + recall == 0 then 0.0 else 2.0 * precision * recall / (precision + recall)
+    def name = s"f1(pos=$posLabel)"
+
 /** Training parameters — loaded from config alongside architecture.
   * Use with ConfigLoader.fromHoconWithTraining().
   */
@@ -172,6 +267,24 @@ case class TrainingParams(
   epochs: Int = 100,
   learningRate: Double = 0.01,
   batchSize: Int = 32
+)
+
+// ═══════════════════════════════════════════════════════════
+//  Checkpoint Types
+// ═══════════════════════════════════════════════════════════
+
+/** Metadata for a single training checkpoint. */
+case class TrainingCheckpoint(
+  epoch: Int,
+  modelPath: String,
+  metadata: Map[String, String] = Map.empty,
+  timestamp: Long = System.currentTimeMillis()
+)
+
+/** Bundle of all checkpoints found in a directory. */
+case class CheckpointBundle(
+  checkpoints: List[TrainingCheckpoint],
+  latestEpoch: Int
 )
 
 // ═══════════════════════════════════════════════════════════

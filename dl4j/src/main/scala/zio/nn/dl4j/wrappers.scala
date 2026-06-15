@@ -8,6 +8,7 @@ import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.dataset.DataSet
 import org.nd4j.linalg.factory.Nd4j
 import java.io.File
+import java.nio.file.Path
 import scala.util.Try
 
 // ═══════════════════════════════════════════════
@@ -63,7 +64,56 @@ class ZModel(val underlying: MultiLayerNetwork):
 
   def score(dataset: DataSet): Try[Double] = Try(underlying.score(dataset))
   def save(file: File): Try[Unit] = Try(ModelSerializer.writeModel(underlying, file, false))
+  def toOnnx(path: java.nio.file.Path): Try[Unit] =
+    Dl4jToOnnx.saveToFile(underlying, path)
   def close(): Unit = underlying.close()
+
+  /** Evaluate model on test data using the given metrics.
+    * Returns a map of metric name → computed value.
+    * Uses predict() internally, then applies each metric.
+    */
+  def evaluate(
+    features: Array[Array[Float]],
+    labels: Array[Float],
+    metrics: List[zio.nn.EvalMetric]
+  ): Try[Map[String, Double]] =
+    predict(features).flatMap { predictions =>
+      Try {
+        val predDouble = predictions.map(_.toDouble)
+        val actualDouble = labels.map(_.toDouble)
+        val nSamples = features.length
+        val nOut = predictions.length / nSamples
+        if nOut == 1 then
+          metrics.map(m => m.name -> m.compute(predDouble, actualDouble)).toMap
+        else
+          val pred2D = predDouble.grouped(nOut).toArray
+          val act2D  = actualDouble.grouped(nOut).toArray
+          val predClass = pred2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+          val actClass  = act2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+          metrics.map(m => m.name -> m.compute(predClass, actClass)).toMap
+      }
+    }
+
+  /** Predict and store results in a vector store. */
+  def predictAndStore(
+    features: Array[Array[Float]],
+    store: VectorStore,
+    ids: Array[String]
+  ): Try[Array[Float]] =
+    predict(features).flatMap { predictions =>
+      val nSamples = features.length
+      val nOut = predictions.length / nSamples
+      val records = if nOut == 1 then
+        ids.zip(predictions).map { case (id, value) =>
+          VectorRecord(id, Array(value))
+        }
+      else
+        val pred2D = predictions.grouped(nOut).toArray
+        ids.zip(pred2D).map { case (id, vec) =>
+          VectorRecord(id, vec)
+        }
+      store.storeBatch(records).map(_ => predictions)
+    }
 
   def summary: String =
     val sb = new StringBuilder("ZModel[MultiLayerNetwork]\n")
@@ -100,6 +150,9 @@ object ZModel:
 
   def load(file: File): Try[ZModel] =
     Try(ZModel(ModelSerializer.restoreMultiLayerNetwork(file)))
+
+  def toOnnx(model: MultiLayerNetwork, path: Path): Try[Unit] =
+    Dl4jToOnnx.saveToFile(model, path)
 
 // ═══════════════════════════════════════════════
 //  ZGraphModel — for ComputationGraph users

@@ -65,5 +65,78 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
     test("LayerDef.BatchNorm carries nIn") {
       val LayerDef.BatchNorm(nIn) = LayerDef.BatchNorm(nIn = 64)
       assertTrue(nIn == 64)
+    },
+    // ── ActivationFn methods ──
+    test("ActivationFn.apply returns correct values") {
+      assertTrue(
+        ActivationFn.ReLU.apply(-1.0) == 0.0,
+        ActivationFn.ReLU.apply(3.0) == 3.0,
+        ActivationFn.Identity.apply(42.0) == 42.0,
+        math.abs(ActivationFn.Sigmoid.apply(0.0) - 0.5) < 1e-10,
+        math.abs(ActivationFn.Tanh.apply(0.0)) < 1e-10,
+        ActivationFn.LeakyReLU.apply(-1.0) == -0.01,
+        ActivationFn.LeakyReLU.apply(2.0) == 2.0
+      )
+    },
+    test("ActivationFn.applyVector softmax sums to 1") {
+      val result = ActivationFn.Softmax.applyVector(Array(2.0, 1.0, 0.1))
+      assertTrue(
+        result.length == 3,
+        math.abs(result.sum - 1.0) < 1e-10
+      )
+    },
+    test("ActivationFn.derivative returns correct values") {
+      assertTrue(
+        ActivationFn.ReLU.derivative(-5.0) == 0.0,
+        ActivationFn.ReLU.derivative(3.0) == 1.0,
+        ActivationFn.Identity.derivative(99.0) == 1.0,
+        ActivationFn.LeakyReLU.derivative(-1.0) == 0.01,
+        ActivationFn.LeakyReLU.derivative(5.0) == 1.0
+      )
+    },
+    test("ActivationFn.Sigmoid.derivative matches s*(1-s) formula") {
+      val x = 0.5; val s = ActivationFn.Sigmoid.apply(x); val d = ActivationFn.Sigmoid.derivative(x)
+      assertTrue(math.abs(d - s * (1.0 - s)) < 1e-10)
+    },
+    test("ActivationFn.Tanh.derivative matches 1-tanh^2 formula") {
+      val x = 0.5; val t = ActivationFn.Tanh.apply(x); val d = ActivationFn.Tanh.derivative(x)
+      assertTrue(math.abs(d - (1.0 - t * t)) < 1e-10)
+    },
+    // ── LossFn methods ──
+    test("LossFn.MSE.compute returns 0 for identical arrays") {
+      val pred = Array(1.0, 2.0, 3.0); val actual = Array(1.0, 2.0, 3.0)
+      assertTrue(LossFn.MSE.compute(pred, actual) == 0.0)
+    },
+    test("LossFn.MSE.compute returns correct value") {
+      assertTrue(math.abs(LossFn.MSE.compute(Array(0.0), Array(1.0)) - 1.0) < 1e-10)
+    },
+    test("LossFn.MAE.compute returns correct value") {
+      assertTrue(LossFn.MAE.compute(Array(1.0, 2.0), Array(3.0, 4.0)) == 2.0)
+    },
+    test("LossFn.BinaryCrossEntropy.compute returns finite value") {
+      val result = LossFn.BinaryCrossEntropy.compute(Array(0.9, 0.1), Array(1.0, 0.0))
+      assertTrue(!result.isNaN, !result.isInfinite)
+    },
+    test("LossFn.Huber.compute is finite") {
+      val result = LossFn.Huber.compute(Array(1.0, 2.0), Array(3.0, 4.0))
+      assertTrue(!result.isNaN, !result.isInfinite, result > 0)
+    },
+    // ── EvalMetric methods ──
+    test("EvalMetric.Accuracy.compute perfect match") {
+      assertTrue(EvalMetric.Accuracy.compute(Array(0.9, 0.1, 0.8), Array(1.0, 0.0, 1.0)) == 1.0)
+    },
+    test("EvalMetric.Accuracy.compute 50%") {
+      assertTrue(EvalMetric.Accuracy.compute(Array(0.9, 0.1), Array(1.0, 1.0)) == 0.5)
+    },
+    test("EvalMetric.Precision.compute") {
+      val p = EvalMetric.Precision().compute(Array(0.9, 0.1, 0.8, 0.2), Array(1.0, 0.0, 1.0, 0.0))
+      assertTrue(p >= 0.0 && p <= 1.0)
+    },
+    test("EvalMetric.Recall.compute") {
+      val r = EvalMetric.Recall().compute(Array(0.9, 0.1, 0.8), Array(1.0, 0.0, 1.0))
+      assertTrue(r >= 0.0 && r <= 1.0)
+    },
+    test("EvalMetric.F1.compute perfect") {
+      assertTrue(EvalMetric.F1().compute(Array(0.9, 0.1, 0.8), Array(1.0, 0.0, 1.0)) == 1.0)
     }
   )

@@ -165,6 +165,54 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
       finally trainer.close()
     }
 
+  /** Evaluate model on test data using the given metrics.
+    * Returns a map of metric name → computed value.
+    * Uses predict() internally, then applies each metric.
+    */
+  def evaluate(
+    features: Array[Array[Float]],
+    labels: Array[Float],
+    metrics: List[zio.nn.EvalMetric]
+  ): Try[Map[String, Double]] =
+    predict(features).flatMap { predictions =>
+      Try {
+        val predDouble = predictions.map(_.toDouble)
+        val actualDouble = labels.map(_.toDouble)
+        // For classification: if n_out > 1, reshape predictions per sample
+        val nSamples = features.length
+        val nOut = predictions.length / nSamples
+        if nOut == 1 then
+          metrics.map(m => m.name -> m.compute(predDouble, actualDouble)).toMap
+        else
+          // Multi-class: reshape to (samples, classes), take argmax per sample
+          val pred2D = predDouble.grouped(nOut).toArray
+          val act2D  = actualDouble.grouped(nOut).toArray
+          val predClass = pred2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+          val actClass  = act2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+          metrics.map(m => m.name -> m.compute(predClass, actClass)).toMap
+      }
+    }
+
+  def predictAndStore(
+    features: Array[Array[Float]],
+    store: zio.nn.VectorStore,
+    ids: Array[String]
+  ): Try[Array[Float]] =
+    predict(features).flatMap { predictions =>
+      val nSamples = features.length
+      val nOut = predictions.length / nSamples
+      val records = if nOut == 1 then
+        ids.zip(predictions).map { case (id, value) =>
+          zio.nn.VectorRecord(id, Array(value))
+        }
+      else
+        val pred2D = predictions.grouped(nOut).toArray
+        ids.zip(pred2D).map { case (id, vec) =>
+          zio.nn.VectorRecord(id, vec)
+        }
+      store.storeBatch(records).map(_ => predictions)
+    }
+
   def summary: String =
     val sb = new StringBuilder(s"ZModel[${underlying.getName}]\n")
     val children = underlying.getBlock.getChildren
@@ -206,6 +254,10 @@ object ZModel:
     m.load(path, name)
     ZModel(m, ndm, LossFn.MSE)
   }
+
+  /** Load an ONNX model. Convenience method that defaults engine to "OnnxRuntime". */
+  def loadOnnx(path: Path, name: String = "model"): Try[ZModel] =
+    load(path, name, engine = "OnnxRuntime")
 
 // ═══════════════════════════════════════════════
 //  ZPredictor / ZTrainer — escape hatch only

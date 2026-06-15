@@ -70,6 +70,34 @@ object zioApi:
           saveEvery = saveEvery
         )
 
+    def evaluateZ(features: Array[Array[Float]], labels: Array[Float], metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
+      ZIO.attemptBlocking(model.evaluate(features, labels, metrics).get)
+
+    def predictAndStoreZ(
+      features: Array[Array[Float]],
+      store: zio.nn.VectorStore,
+      ids: Array[String]
+    ): Task[Array[Float]] =
+      ZIO.attemptBlocking(model.predictAndStore(features, store, ids).get)
+
+    def resumeFromCheckpoint(checkpointPath: String, name: String = "model", engine: String = "PyTorch"): ZIO[Scope, Throwable, (ZModel, zio.nn.TrainingCheckpoint)] =
+      listCheckpoints(checkpointPath).flatMap {
+        case Nil => ZIO.fail(new RuntimeException(s"No checkpoints found in $checkpointPath"))
+        case checkpoints =>
+          val latest = checkpoints.maxBy(_.epoch)
+          ZIO.acquireRelease(ZIO.attemptBlocking(ZModel.load(Path.of(latest.modelPath), name, engine).get))(m => ZIO.attemptBlocking(m.close()).orDie)
+            .map((_, latest))
+      }
+
+    def loadCheckpoint(path: String): Task[zio.nn.TrainingCheckpoint] =
+      ZIO.attemptBlocking {
+        val p = Path.of(path)
+        val epoch = p.getFileName.toString match
+          case s"$prefix-epoch$n" => n.toInt
+          case other => throw RuntimeException(s"Cannot parse epoch from filename: $other")
+        zio.nn.TrainingCheckpoint(epoch = epoch, modelPath = path)
+      }
+
   // ── Advanced Training: Callbacks, Validation, LR Schedule ──────────────
   extension (model: ZModel)
 
@@ -170,3 +198,31 @@ object zioApi:
 
   def load(path: Path, name: String = "model", engine: String = "PyTorch"): ZIO[Scope, Throwable, ZModel] =
     ZIO.acquireRelease(ZIO.attemptBlocking(ZModel.load(path, name, engine).get))(m => ZIO.attemptBlocking(m.close()).orDie)
+
+  /** Load an ONNX model. Convenience method that defaults engine to "OnnxRuntime". */
+  def loadOnnx(path: Path, name: String = "model"): ZIO[Scope, Throwable, ZModel] =
+    load(path, name, engine = "OnnxRuntime")
+
+  // ── Checkpoint utilities ────────────────────────────────────────────────
+
+  /** List all available checkpoints in a directory, sorted by epoch ascending. */
+  def listCheckpoints(dir: String): Task[List[zio.nn.TrainingCheckpoint]] =
+    ZIO.attemptBlocking {
+      val d = new java.io.File(dir)
+      if !d.isDirectory then throw new RuntimeException(s"Not a directory: $dir")
+      val files = d.listFiles().filter(f => f.getName.matches(".+-epoch\\d+$")).toList
+      val cps = files.map { f =>
+        val n = f.getName.replaceAll("^.*-epoch", "").toInt
+        zio.nn.TrainingCheckpoint(epoch = n, modelPath = f.getAbsolutePath, timestamp = f.lastModified())
+      }
+      cps.sortBy(_.epoch)
+    }
+
+  /** Keep only the latest N checkpoints, delete the rest. */
+  def cleanCheckpoints(dir: String, keep: Int): Task[Unit] =
+    listCheckpoints(dir).flatMap { cps =>
+      val toDelete = cps.dropRight(keep)
+      ZIO.foreachDiscard(toDelete) { cp =>
+        ZIO.attemptBlocking { val f = new java.io.File(cp.modelPath); if f.exists() then f.delete() }
+      }
+    }

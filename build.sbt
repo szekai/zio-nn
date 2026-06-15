@@ -87,10 +87,27 @@ lazy val embeddings = project
     )
   )
 
+// ── Vector Database: pgvector integration via Magnum ────
+lazy val vectordb = project
+  .in(file("vectordb"))
+  .dependsOn(core)
+  .settings(
+    name := "zio-nn-vectordb",
+    libraryDependencies ++= Seq(
+      "dev.zio"            %% "zio"              % zioV,
+      "dev.zio"            %% "zio-streams"      % zioV,
+      "com.augustnagro"    %% "magnum"           % "1.3.0",
+      "com.pgvector"        % "pgvector"         % "0.1.6",
+      "org.postgresql"      % "postgresql"       % "42.7.11",
+      "dev.zio"            %% "zio-test"         % zioV % Test,
+      "dev.zio"            %% "zio-test-sbt"     % zioV % Test
+    )
+  )
+
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(core, djl, dl4j, embeddings)
+  .aggregate(core, djl, dl4j, embeddings, vectordb)
   .settings(
     name := "zio-nn",
     publish / skip := true

@@ -158,6 +158,9 @@ Sequential(7)(
 | Close | `model.close()` | Releases native resources |
 | Tokenize | `tok.encode(text): Try[EncodingResult]` | Text → token IDs (see Tokenization section) |
 | Image Transform | `transformer.transform(bytes): Try[Array[Array[Float]]]` | Raw image → float array (see Image Preprocessing section) |
+| Evaluate | `model.evaluate(features, labels, metrics): Try[Map[String, Double]]` | Accuracy, precision, recall, F1 built-in |
+| Activation apply/derivative | `ActivationFn.ReLU.apply(x)` / `.derivative(x)` | Pure computation, no backend needed |
+| Loss compute | `LossFn.MSE.compute(pred, actual)` | Pure computation, no backend needed |
 
 ### DSL Coverage (80% use case)
 
@@ -586,6 +589,25 @@ model.fitWithCheckpoints(
 // Saves: models/lstm-epoch10, models/lstm-epoch20, ...
 ```
 
+### Checkpoint Load/Resume (v0.10.0)
+
+```scala
+import zio.nn.dl4j.zioApi.*
+
+// List all checkpoints in a directory
+listCheckpoints("models/lstm")        // Task[List[TrainingCheckpoint]]
+
+// Resume training from the latest checkpoint
+ZIO.scoped {
+  resumeFromCheckpoint("models/lstm").flatMap { case (loaded, cp) =>
+    loaded.fitZ(moreFeats, moreLabels, epochs = 10)
+  }
+}
+
+// Keep latest N checkpoints, delete the rest
+cleanCheckpoints("models/lstm", keep = 3)  // Task[Unit]
+```
+
 **Adding Prometheus:** Use `zio-metrics-connectors` + `@@ Metric.timer(...)` for full observability:
 
 ```scala
@@ -594,6 +616,32 @@ val predictions = model.predictZ(features) @@
 ```
 
 ---
+
+## Evaluation Metrics (v0.10.0)
+
+Built-in EvalMetric types and evaluate() on ZModel:
+
+```scala
+import zio.nn.*
+
+// Direct metric computation (pure, no model needed)
+EvalMetric.Accuracy.compute(Array(0.9, 0.1), Array(1.0, 0.0))  // 1.0
+EvalMetric.F1().compute(Array(0.9, 0.8, 0.2), Array(1.0, 1.0, 0.0))
+
+// Evaluate on a trained model (both backends)
+model.evaluate(features, labels, List(EvalMetric.Accuracy, EvalMetric.F1()))
+// Returns: Map("accuracy" → 0.87, "f1(pos=1.0)" → 0.85)
+
+// ZIO variant
+import zio.nn.dl4j.zioApi.*
+ZIO.scoped {
+  create(arch).flatMap { model =>
+    model.evaluateZ(feats, labels, List(EvalMetric.Accuracy))
+  }
+}
+```
+
+Available metrics: `Accuracy`, `Precision`, `Recall`, `F1` (all with configurable positive label).
 
 ## Advanced Training: Callbacks, Early Stopping, LR Scheduling (v0.9.0)
 
