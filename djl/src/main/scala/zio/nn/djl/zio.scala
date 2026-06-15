@@ -80,6 +80,13 @@ object zioApi:
     ): Task[Array[Float]] =
       ZIO.attemptBlocking(model.predictAndStore(features, store, ids).get)
 
+    def predictAndStoreFlow(
+      store: zio.nn.VectorStore
+    ): ZPipeline[Any, Throwable, (Array[Array[Float]], Array[String]), Array[Float]] =
+      ZPipeline.mapZIO { (features, ids) =>
+        predictAndStoreZ(features, store, ids)
+      }
+
     def resumeFromCheckpoint(checkpointPath: String, name: String = "model", engine: String = "PyTorch"): ZIO[Scope, Throwable, (ZModel, zio.nn.TrainingCheckpoint)] =
       listCheckpoints(checkpointPath).flatMap {
         case Nil => ZIO.fail(new RuntimeException(s"No checkpoints found in $checkpointPath"))

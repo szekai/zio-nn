@@ -32,6 +32,7 @@ model.close()
 | `zio-nn-djl` | ZModel, Backend, zioApi, TensorOps, scope, implicits — PyTorch/ONNX/TF/XGBoost |
 | `zio-nn-dl4j` | ZModel, Backend, zioApi, TensorOps, implicits — JVM-native (no Python) |
 | `zio-nn-dl4j-embeddings` | Word2Vec training (`SequenceVectors + SkipGram`), pre-trained vector loading, embedding-to-LayerSpec bridge |
+| `zio-nn-vectordb` | Vector store abstraction (`VectorStore` trait), `InMemoryVectorStore`, `PgvectorStore`, ZIO wrappers, egress pipeline (`predictAndStoreFlow`) |
 
 ```scala
 // sbt — check latest release tag for version: https://github.com/szekai/zio-nn/releases
@@ -159,6 +160,9 @@ Sequential(7)(
 | Tokenize | `tok.encode(text): Try[EncodingResult]` | Text → token IDs (see Tokenization section) |
 | Image Transform | `transformer.transform(bytes): Try[Array[Array[Float]]]` | Raw image → float array (see Image Preprocessing section) |
 | Evaluate | `model.evaluate(features, labels, metrics): Try[Map[String, Double]]` | Accuracy, precision, recall, F1 built-in |
+| VectorStore | `store(record)`, `storeBatch(recs)`, `search(query, k)`, `delete(id)`, `deleteBatch(ids)` | Framework-agnostic, `ZIO.scoped` resource management |
+| Predict & Store | `model.predictAndStore(features, store, ids): Try[Array[Float]]` | Predict + store result as `VectorRecord` in a `VectorStore` |
+| predictAndStoreFlow | `ZPipeline[Any, Throwable, (Array[Array[Float]], Array[String]), Array[Float]]` | Streaming predict-and-store pipeline |
 | Activation apply/derivative | `ActivationFn.ReLU.apply(x)` / `.derivative(x)` | Pure computation, no backend needed |
 | Loss compute | `LossFn.MSE.compute(pred, actual)` | Pure computation, no backend needed |
 

@@ -544,6 +544,107 @@ priceStream.via(model.predictFlow).runCollect
 dataStream.via(model.fitFlow(epochs = 1)).runDrain
 ```
 
+## Vector Database / RAG (v0.10.0)
+
+Store model predictions in a vector database for retrieval-augmented generation (RAG), semantic search, and similarity queries.
+
+### VectorStore Trait
+
+The `VectorStore` trait in `zio.nn` defines a framework-agnostic API for storing and searching float vectors:
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `store` | `Try[Unit]` | Store a single `VectorRecord(id, values, metadata)` |
+| `storeBatch` | `Try[Unit]` | Batch store multiple records |
+| `search` | `Try[Seq[VectorRecord]]` | Search by query vector, return k nearest |
+| `delete` | `Try[Unit]` | Delete a record by id |
+| `deleteBatch` | `Try[Unit]` | Delete multiple records by ids |
+| `close` | `Unit` | Release resources |
+
+### InMemoryVectorStore
+
+For testing and local use — stores vectors in a concurrent hash map with cosine distance search:
+
+```scala
+import zio.nn.vectordb.InMemoryVectorStore
+
+val store = InMemoryVectorStore()
+store.store(VectorRecord("a", Array(1f, 0f, 0f), Map("color" -> "red"))).get
+val results = store.search(Array(0.9f, 0.1f, 0.0f), 2).get
+```
+
+### PgvectorStore
+
+PostgreSQL + pgvector for production — uses Magnum DB and pgvector JDBC:
+
+```scala
+import zio.nn.vectordb.*
+
+// Managed resource with ZIO config
+ZIO.scoped {
+  createPgvectorStore.flatMap { store =>
+    store.storeZ(VectorRecord("q", Array(1f, 0f, 0f))) *>
+      store.searchZ(Array(0.9f, 0.1f, 0.0f), 5)
+  }
+}
+```
+
+Requires PostgreSQL with pgvector extension. Configuration via HOCON:
+
+```hocon
+vectordb {
+  url = "jdbc:postgresql://localhost:5432/vectordb"
+  user = "postgres"
+  password = "secret"
+  table = "vectors"
+  dimension = 768
+}
+```
+
+### ZIO Wrappers
+
+All `VectorStore` methods have ZIO variants via the `vectordb` package object:
+
+```scala
+import zio.nn.vectordb.*
+
+store.storeZ(record)           // Task[Unit]
+store.storeBatchZ(records)     // Task[Unit]
+store.searchZ(query, k)        // Task[Seq[VectorRecord]]
+store.deleteZ(id)              // Task[Unit]
+store.deleteBatchZ(ids)        // Task[Unit]
+```
+
+### Egress Pipeline: predictAndStoreFlow
+
+Combine model prediction with vector storage in a single streaming pipeline. Each stream element is a `(features, ids)` batch — features are predicted, results are stored as `VectorRecord`s and emitted:
+
+```scala
+import zio.nn.dl4j.zioApi.*  // or zio.nn.djl.zioApi.*
+
+ZIO.scoped {
+  for
+    model <- create(arch, "rag-model")
+    store <- ZIO.succeed(InMemoryVectorStore())
+    _     <- ZStream(
+               (Array(Array.fill(7)(0.5f), Array.fill(7)(0.3f)), Array("a", "b")),
+               (Array(Array.fill(7)(0.9f)), Array("c"))
+             ).via(model.predictAndStoreFlow(store))
+              .runCollect
+  yield ()
+}
+```
+
+The `predictAndStore` (Try) and `predictAndStoreZ` (Task) variants are also available for non-streaming use:
+
+```scala
+// Try-based
+model.predictAndStore(features, store, ids).get
+
+// ZIO
+model.predictAndStoreZ(features, store, ids)
+```
+
 ## Tokenization
 
 Convert text to token IDs for models with `Embedding` as the first layer.

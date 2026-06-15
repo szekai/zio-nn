@@ -59,7 +59,7 @@ lazy val djl = project
 // ── DL4J backend: Eclipse Deeplearning4j ───────────────
 lazy val dl4j = project
   .in(file("dl4j"))
-  .dependsOn(core)
+  .dependsOn(core, vectordb % Test)
   .settings(
     name := "zio-nn-dl4j",
     libraryDependencies ++= Seq(
