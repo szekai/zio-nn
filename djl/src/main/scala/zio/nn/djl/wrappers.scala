@@ -11,7 +11,7 @@ import ai.djl.training.{Trainer, DefaultTrainingConfig, EasyTrain, TrainingResul
 import ai.djl.training.dataset.{Dataset, RandomAccessDataset, Record}
 import ai.djl.training.loss.Loss
 import ai.djl.training.initializer.XavierInitializer
-import ai.djl.training.optimizer.{Adam, Sgd, RmsProp}
+import ai.djl.training.optimizer.Optimizer
 import ai.djl.training.tracker.Tracker
 import ai.djl.util.Progress
 import java.nio.file.Path
@@ -119,9 +119,9 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
         case OptimizerDef.RMSprop(r) => r.toFloat
       else lr
     optimizerDef match
-      case OptimizerDef.Adam(_)    => Adam.builder().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
-      case OptimizerDef.SGD(_)     => Sgd.builder().setLearningRateTracker(Tracker.fixed(effectiveLr)).build()
-      case OptimizerDef.RMSprop(_) => RmsProp.builder().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
+      case OptimizerDef.Adam(_)    => Optimizer.adam().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
+      case OptimizerDef.SGD(_)     => Optimizer.sgd().setLearningRateTracker(Tracker.fixed(effectiveLr)).build()
+      case OptimizerDef.RMSprop(_) => Optimizer.rmsprop().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
 
   /** ESCAPE HATCH: raw DJL prediction with NDList. */
   def predictRaw(input: NDList): Try[NDList] = Try {

@@ -3,13 +3,21 @@ import zio.*
 import scala.jdk.CollectionConverters.*
 
 object ConfigLoader:
+  private val allActivations: Seq[ActivationFn] =
+    ActivationFn.Tanh :: ActivationFn.ReLU :: ActivationFn.Sigmoid ::
+    ActivationFn.Softmax :: ActivationFn.Identity :: ActivationFn.LeakyReLU() :: Nil
+
+  private val allLosses: Seq[LossFn] =
+    LossFn.MSE :: LossFn.MAE :: LossFn.BinaryCrossEntropy() ::
+    LossFn.CategoricalCrossEntropy() :: LossFn.Huber() :: Nil
+
   private def parseActivation(s: String): ActivationFn =
-    ActivationFn.values.find(_.toString.equalsIgnoreCase(s))
-      .getOrElse(throw IllegalArgumentException(s"Unknown activation: $s (valid: ${ActivationFn.values.mkString(", ")})"))
+    allActivations.find(_.toString.equalsIgnoreCase(s))
+      .getOrElse(throw IllegalArgumentException(s"Unknown activation: $s (valid: ${allActivations.mkString(", ")})"))
 
   private def parseLoss(s: String): LossFn =
-    LossFn.values.find(_.toString.equalsIgnoreCase(s))
-      .getOrElse(throw IllegalArgumentException(s"Unknown loss: $s (valid: ${LossFn.values.mkString(", ")})"))
+    allLosses.find(_.toString.equalsIgnoreCase(s))
+      .getOrElse(throw IllegalArgumentException(s"Unknown loss: $s (valid: ${allLosses.mkString(", ")})"))
 
   private def parseLayer(conf: com.typesafe.config.Config): LayerDef =
     conf.getString("type") match
