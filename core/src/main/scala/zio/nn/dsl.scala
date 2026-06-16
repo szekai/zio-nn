@@ -83,8 +83,12 @@ object dsl:
   val ReLU    = ActivationFn.ReLU
   val Sigmoid = ActivationFn.Sigmoid
   val Softmax = ActivationFn.Softmax
+  def LeakyReLU(alpha: Double = 0.01): ActivationFn = ActivationFn.LeakyReLU(alpha)
   val MSE  = LossFn.MSE
   val MAE  = LossFn.MAE
+  def BinaryCrossEntropy(epsilon: Double = 1e-15): LossFn = LossFn.BinaryCrossEntropy(epsilon)
+  def CategoricalCrossEntropy(epsilon: Double = 1e-15): LossFn = LossFn.CategoricalCrossEntropy(epsilon)
+  def Huber(delta: Double = 1.0): LossFn = LossFn.Huber(delta)
   def Adam(lr: Double = 0.001)  = OptimizerDef.Adam(lr)
   def SGD(lr: Double = 0.01)    = OptimizerDef.SGD(lr)
   def RMSprop(lr: Double = 0.001) = OptimizerDef.RMSprop(lr)

@@ -11,7 +11,7 @@ import ai.djl.training.{Trainer, DefaultTrainingConfig, EasyTrain, TrainingResul
 import ai.djl.training.dataset.{Dataset, RandomAccessDataset, Record}
 import ai.djl.training.loss.Loss
 import ai.djl.training.initializer.XavierInitializer
-import ai.djl.training.optimizer.Adam
+import ai.djl.training.optimizer.{Adam, Sgd, RmsProp}
 import ai.djl.training.tracker.Tracker
 import ai.djl.util.Progress
 import java.nio.file.Path
@@ -20,7 +20,7 @@ import scala.util.Try
 // ═══════════════════════════════════════════════
 //  ZModel — unified API across backends
 // ═══════════════════════════════════════════════
-class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
+class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef: OptimizerDef = OptimizerDef.Adam()):
 
   /** UNIFIED: predict from float arrays. Works identically on both backends. */
   def predict(features: Array[Array[Float]]): Try[Array[Float]] =
@@ -38,11 +38,11 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
     finally sub.close()
 
   /** UNIFIED: train from float arrays. Works identically on both backends. */
-  def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
+  def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
     Try {
-      val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
+      val opt = selectOptimizer(lr)
       val config = new DefaultTrainingConfig(selectLoss(lossFn))
-      config.optOptimizer(adam)
+      config.optOptimizer(opt)
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
       try
@@ -60,9 +60,9 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
 
   def fit(features: Array[Array[Float]], labels: Array[Array[Float]], epochs: Int, lr: Float): Try[FitResult] =
     Try {
-      val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
+      val opt = selectOptimizer(lr)
       val config = new DefaultTrainingConfig(selectLoss(lossFn))
-      config.optOptimizer(adam)
+      config.optOptimizer(opt)
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
       try
@@ -84,9 +84,9 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
       val oneHot = labels.map { label =>
         val row = new Array[Float](numClasses); row(label) = 1.0f; row
       }
-      val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
+      val opt = selectOptimizer(lr)
       val config = new DefaultTrainingConfig(selectLoss(lossFn))
-      config.optOptimizer(adam)
+      config.optOptimizer(opt)
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
       try
@@ -103,11 +103,25 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
     }
 
   private def selectLoss(lossFn: LossFn): Loss = lossFn match
-    case LossFn.MSE                    => Loss.l2Loss()
-    case LossFn.MAE                    => Loss.l1Loss()
-    case LossFn.BinaryCrossEntropy     => Loss.sigmoidBinaryCrossEntropyLoss()
-    case LossFn.CategoricalCrossEntropy => Loss.softmaxCrossEntropyLoss()
-    case LossFn.Huber                  => Loss.l2Loss() // DJL has no native Huber
+    case LossFn.MSE                     => Loss.l2Loss()
+    case LossFn.MAE                     => Loss.l1Loss()
+    case LossFn.BinaryCrossEntropy(_)   => Loss.sigmoidBinaryCrossEntropyLoss()
+    case LossFn.CategoricalCrossEntropy(_) => Loss.softmaxCrossEntropyLoss()
+    case LossFn.Huber(_)                => Loss.l2Loss() // DJL has no native Huber
+
+  private val LR_UNSPECIFIED = -1.0f
+
+  private def selectOptimizer(lr: Float): Optimizer =
+    val effectiveLr =
+      if lr == LR_UNSPECIFIED then optimizerDef match
+        case OptimizerDef.Adam(r)   => r.toFloat
+        case OptimizerDef.SGD(r)    => r.toFloat
+        case OptimizerDef.RMSprop(r) => r.toFloat
+      else lr
+    optimizerDef match
+      case OptimizerDef.Adam(_)    => Adam.builder().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
+      case OptimizerDef.SGD(_)     => Sgd.builder().setLearningRateTracker(Tracker.fixed(effectiveLr)).build()
+      case OptimizerDef.RMSprop(_) => RmsProp.builder().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
 
   /** ESCAPE HATCH: raw DJL prediction with NDList. */
   def predictRaw(input: NDList): Try[NDList] = Try {
@@ -143,11 +157,11 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn):
     finally sub.close()
 
   /** Train with integer token indices (when first layer is Embedding). */
-  def fitInt(tokens: Array[Array[Int]], labels: Array[Float], epochs: Int, lr: Float = 0.001f): Try[FitResult] =
+  def fitInt(tokens: Array[Array[Int]], labels: Array[Float], epochs: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
     Try {
-      val adam = Adam.builder().optLearningRateTracker(Tracker.fixed(lr)).build()
+      val opt = selectOptimizer(lr)
       val config = new DefaultTrainingConfig(selectLoss(lossFn))
-      config.optOptimizer(adam)
+      config.optOptimizer(opt)
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
       try
@@ -233,13 +247,16 @@ object ZModel:
     val m = Model.newInstance(name, ndm.getDevice(), engine)
     m.setBlock(block)
     val lossFn = extractLoss(arch)
+    val optimizer = arch match
+      case ModelDef.Sequential(s) => s.optimizer
+      case ModelDef.Functional(f) => f.optimizer
     val inputSize = arch match
       case ModelDef.Sequential(s) => s.inputSize
       case _ => 1
     val config = new DefaultTrainingConfig(Loss.l2Loss())
     val trainer = m.newTrainer(config)
     try trainer.initialize(new Shape(1, inputSize)) finally trainer.close()
-    ZModel(m, ndm, lossFn)
+    ZModel(m, ndm, lossFn, optimizer)
   }
 
   private def extractLoss(arch: ModelDef): LossFn = arch match

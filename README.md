@@ -510,7 +510,7 @@ for
 yield e
 ```
 
-Ops: `create`, `create1D`, `createDouble`, `createDouble1D`, `zeros`, `ones`, `fill`, `eye`, `copy`, `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `abs`, `square`, `sign`, `log`, `sigmoid`, `maximum`, `diagonal`, `get`, `slice`, `concatenate`, `gather`, `unique`, `countZeros`, `std`, `norm`, `solve`, `lessThanOrEqual`, `not`, `where`, `toFloatArray`, `toDoubleArray`, `shape`
+Ops: `create`, `create1D`, `createDouble`, `createDouble1D`, `zeros`, `ones`, `fill`, `eye`, `copy`, `add`, `sub`, `mul`, `div`, `matMul`, `dot`, `transpose`, `sum`, `mean`, `neg`, `abs`, `square`, `sign`, `log`, `sigmoid`, `maximum`, `diagonal`, `get`, `slice`, `concatenate`, `gather`, `unique`, `countZeros`, `std`, `norm`, `solve(threshold: Double = 1e-12)`, `lessThanOrEqual`, `not(threshold: Double = 1e-12)`, `where(threshold: Double = 1e-12)`, `toFloatArray`, `toDoubleArray`, `shape`
 
 ## Conv2D / CNN (v0.5.3)
 
@@ -646,6 +646,23 @@ ZIO.scoped {
 ```
 
 Available metrics: `Accuracy`, `Precision`, `Recall`, `F1` (all with configurable positive label).
+
+### Population Stability Index (PSI)
+
+Model drift detection via population stability index:
+
+```scala
+import zio.nn.EvaluationMetrics.*
+
+val expected = Array(0.2, 0.3, 0.5)    // reference distribution
+val actual   = Array(0.1, 0.6, 0.3)    // current distribution
+
+// Default: 10 bins, 1e-10 smoothing
+val psi = EvaluationMetrics.psi(expected, actual).get  // Double
+
+// Custom bins and smoothing
+val psi2 = EvaluationMetrics.psi(expected, actual, numBins = 20, smoothing = 1e-8).get
+```
 
 ## Advanced Training: Callbacks, Early Stopping, LR Scheduling (v0.9.0)
 
@@ -846,6 +863,16 @@ tok.close()
 val tok2 = ZTokenizer.whitespace()                 // split on whitespace
 val result2 = tok2.encode("hello world").get       // 2 tokens
 tok2.close()
+```
+
+`vocabRange` controls which Unicode code points are included in the vocabulary (default: `32 to 126` — printable ASCII). For extended character sets:
+
+```scala
+// Include common Unicode characters (Latin-1 Supplement)
+val tok = ZTokenizer.regex("\\w+", vocabRange = 32 to 255).get
+
+// Full-range vocabulary
+val tok = ZTokenizer.regex("\\W+", vocabRange = 0 to 0x10FFFF).get
 ```
 
 ### ZIO Wrappers

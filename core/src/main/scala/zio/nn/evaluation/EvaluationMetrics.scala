@@ -72,13 +72,12 @@ object EvaluationMetrics {
   /**
    * Logarithmic loss for binary probabilistic predictions.
    */
-  def logLoss(predictions: Array[Double], labels: Array[Int]): Double = {
+  def logLoss(predictions: Array[Double], labels: Array[Int], epsilon: Double = 1e-15): Double = {
     validateProbabilityClassificationInputs(predictions, labels)
 
     if (predictions.isEmpty) {
       0.0
     } else {
-      val epsilon = 1e-15
       var totalLoss = 0.0
       var i = 0
 
@@ -462,15 +461,13 @@ object EvaluationMetrics {
   /**
    * Population Stability Index over 10 equal-width probability bins.
    */
-  def psi(predictedProbs: Array[Double], actualProbs: Array[Double]): Double = {
+  def psi(predictedProbs: Array[Double], actualProbs: Array[Double], numBins: Int = 10, smoothing: Double = 1e-10): Double = {
     validateProbabilityArray(predictedProbs, "predictedProbs")
     validateProbabilityArray(actualProbs, "actualProbs")
 
     if (predictedProbs.isEmpty || actualProbs.isEmpty) {
       0.0
     } else {
-      val numBins = 10
-      val smoothing = 1e-10
       val predictedCounts = new Array[Int](numBins)
       val actualCounts = new Array[Int](numBins)
 

@@ -95,7 +95,7 @@ object Backend:
   private def toDL4JActivation(act: ActivationFn): DL4JActivation = act match
     case ActivationFn.Tanh => DL4JActivation.TANH; case ActivationFn.ReLU => DL4JActivation.RELU
     case ActivationFn.Sigmoid => DL4JActivation.SIGMOID; case ActivationFn.Softmax => DL4JActivation.SOFTMAX
-    case ActivationFn.Identity => DL4JActivation.IDENTITY; case ActivationFn.LeakyReLU => DL4JActivation.LEAKYRELU
+    case ActivationFn.Identity => DL4JActivation.IDENTITY; case ActivationFn.LeakyReLU(_) => DL4JActivation.LEAKYRELU
 
   private def toDL4JAdvancedLayer(adv: AdvancedLayerDef) = adv match
     case AdvancedLayerDef.GRU(_, _, _, _) =>
@@ -117,6 +117,6 @@ object Backend:
 
   private def toDL4JLoss(loss: LossFn): LossFunctions.LossFunction = loss match
     case LossFn.MSE => LossFunctions.LossFunction.MSE; case LossFn.MAE => LossFunctions.LossFunction.L1
-    case LossFn.BinaryCrossEntropy => LossFunctions.LossFunction.XENT
-    case LossFn.CategoricalCrossEntropy => LossFunctions.LossFunction.MCXENT
-    case LossFn.Huber => LossFunctions.LossFunction.L2 // DL4J has no native Huber — L2 is closest
+    case LossFn.BinaryCrossEntropy(_) => LossFunctions.LossFunction.XENT
+    case LossFn.CategoricalCrossEntropy(_) => LossFunctions.LossFunction.MCXENT
+    case LossFn.Huber(_) => LossFunctions.LossFunction.L2 // DL4J has no native Huber — L2 is closest

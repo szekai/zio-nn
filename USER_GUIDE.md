@@ -458,6 +458,23 @@ ZIO.scoped {
 
 Multi-class support: when the model output dimension > 1, the flat predictions are reshaped to `(samples, classes)` and argmax is applied before computing each metric. The issue specification details are in [#29](https://github.com/szekai/zio-nn/issues/29).
 
+### Population Stability Index (PSI)
+
+Monitor model drift by comparing two probability distributions:
+
+```scala
+import zio.nn.EvaluationMetrics.*
+
+val expected = Array(0.2, 0.3, 0.5)    // reference distribution
+val actual   = Array(0.1, 0.6, 0.3)    // current distribution
+
+// Default: 10 bins, 1e-10 smoothing
+val psi = EvaluationMetrics.psi(expected, actual).get  // Double
+
+// Custom configuration
+val psi2 = EvaluationMetrics.psi(expected, actual, numBins = 20, smoothing = 1e-8).get
+```
+
 ## Batch Data Loading: DataSetLoader
 
 ZIO Stream pipeline from files on disk → transform → batched arrays → model:
@@ -680,6 +697,16 @@ tok.close()
 val tok2 = ZTokenizer.whitespace()
 tok2.encode("hello world").get.tokenIds // 2 tokens
 tok2.close()
+```
+
+`vocabRange` controls which Unicode code points are included in the vocabulary (default: `32 to 126` — printable ASCII):
+
+```scala
+// Include Latin-1 Supplement characters
+val tok = ZTokenizer.regex("\\w+", vocabRange = 32 to 255).get
+
+// Full Unicode range
+val tok = ZTokenizer.regex("\\W+", vocabRange = 0 to 0x10FFFF).get
 ```
 
 ### ZIO Wrappers

@@ -103,7 +103,7 @@ object TensorOps:
     if left.sameElements(right) then ZIO.unit
     else fail(s"$op requires matching shapes: ${left.mkString("[", ", ", "]")} vs ${right.mkString("[", ", ", "]")}")
 
-  private def solveLinearSystem(matrix: Array[Array[Double]], rhs: Array[Array[Double]]): Array[Array[Double]] =
+  private def solveLinearSystem(matrix: Array[Array[Double]], rhs: Array[Array[Double]], threshold: Double = 1e-12): Array[Array[Double]] =
     val n = matrix.length
     val rhsCols = rhs.headOption.map(_.length).getOrElse(0)
     val a = matrix.map(_.clone())
@@ -111,7 +111,7 @@ object TensorOps:
 
     for pivot <- 0 until n do
       val maxRow = (pivot until n).maxBy(row => math.abs(a(row)(pivot)))
-      if math.abs(a(maxRow)(pivot)) < 1e-12 then
+      if math.abs(a(maxRow)(pivot)) < threshold then
         throw IllegalArgumentException("solve requires a non-singular matrix")
       if maxRow != pivot then
         val tmpA = a(pivot)
@@ -290,7 +290,7 @@ object TensorOps:
           yield out
     yield out
 
-  def solve(a: INDArray, b: INDArray): Task[INDArray] =
+  def solve(a: INDArray, b: INDArray, threshold: Double = 1e-12): Task[INDArray] =
     for
       coeffShape <- shape(a)
       rhsShape   <- shape(b)
@@ -303,7 +303,7 @@ object TensorOps:
             n = coeffShape(0).toInt
             coeffMatrix = Array.tabulate(n, n)((r, c) => coeffValues(r * n + c))
             rhsMatrix = Array.tabulate(n, 1)((r, _) => rhsValues(r))
-            solved = solveLinearSystem(coeffMatrix, rhsMatrix).map(_.head)
+            solved = solveLinearSystem(coeffMatrix, rhsMatrix, threshold).map(_.head)
             out <- createDouble1D(solved)
           yield out
         else if rhsShape.length == 2 && rhsShape(0) == coeffShape(0) then
@@ -314,7 +314,7 @@ object TensorOps:
             rhsCols = rhsShape(1).toInt
             coeffMatrix = Array.tabulate(n, n)((r, c) => coeffValues(r * n + c))
             rhsMatrix = Array.tabulate(n, rhsCols)((r, c) => rhsValues(r * rhsCols + c))
-            solved = solveLinearSystem(coeffMatrix, rhsMatrix)
+            solved = solveLinearSystem(coeffMatrix, rhsMatrix, threshold)
             out <- createDouble(solved)
           yield out
         else fail(s"solve requires RHS rows to match coefficient size ${coeffShape(0)}, got ${rhsShape.mkString("[", ", ", "]")}")
@@ -419,14 +419,14 @@ object TensorOps:
       out        <- createFromFlat(left.zip(right).map((l, r) => if l <= r then 1.0 else 0.0), leftShape, "lessThanOrEqual")
     yield out
 
-  def not(a: INDArray): Task[INDArray] =
+  def not(a: INDArray, threshold: Double = 1e-12): Task[INDArray] =
     for
       values <- toDoubleArray(a)
       targetShape <- shape(a)
-      out <- createFromFlat(values.map(v => if math.abs(v) < 1e-12 then 1.0 else 0.0), targetShape, "not")
+      out <- createFromFlat(values.map(v => if math.abs(v) < threshold then 1.0 else 0.0), targetShape, "not")
     yield out
 
-  def where(a: INDArray, mask: INDArray): Task[INDArray] =
+  def where(a: INDArray, mask: INDArray, threshold: Double = 1e-12): Task[INDArray] =
     for
       targetShape <- shape(a)
       maskShape   <- shape(mask)
@@ -434,7 +434,7 @@ object TensorOps:
       _ <- if targetShape.length == 1 then ZIO.unit else fail(s"where currently supports only 1D tensors, got rank ${targetShape.length}")
       values <- toDoubleArray(a)
       maskValues <- toDoubleArray(mask)
-      filtered = values.zip(maskValues).collect { case (value, keep) if math.abs(keep) >= 1e-12 => value }
+      filtered = values.zip(maskValues).collect { case (value, keep) if math.abs(keep) >= threshold => value }
       out <- createDouble1D(filtered)
     yield out
 

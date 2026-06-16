@@ -49,6 +49,25 @@ All consumer code remains unchanged. `import zio.nn.TensorOps.*` auto-resolves.
 | `toFloatArray` | `... → Task[Array[Float]]` |
 | `toDoubleArray` | `... → Task[Array[Double]]` |
 | `shape` | `... → Task[Array[Long]]` |
+| `abs` | `a → Task[...]` |
+| `square` | `a → Task[...]` |
+| `sign` | `a → Task[...]` |
+| `log` | `a → Task[...]` |
+| `sigmoid` | `a → Task[...]` |
+| `maximum` | `(a, b) → Task[...]` |
+| `diagonal` | `a → Task[...]` |
+| `get` | `(a, indices) → Task[...]` |
+| `slice` | `(a, start, end) → Task[...]` |
+| `concatenate` | `(a, b) → Task[...]` |
+| `gather` | `(a, indices) → Task[...]` |
+| `unique` | `a → Task[...]` |
+| `countZeros` | `a → Task[Long]` |
+| `std` | `a → Task[Float]` |
+| `norm` | `a → Task[Float]` | L2 norm |
+| `solve` | `(a, b, threshold: Double = 1e-12) → Task[Array[Float]]` | Solve `Ax = b`; singular values below `threshold` are zeroed |
+| `lessThanOrEqual` | `(a, b) → Task[Array[Boolean]]` |
+| `not` | `(a, threshold: Double = 1e-12) → Task[Array[Float]]` | Logical NOT; values ≤ `threshold` treated as true (zero) |
+| `where` | `(cond, a, b, threshold: Double = 1e-12) → Task[Array[Float]]` | Element-wise `if (cond[i]) a[i] else b[i]` with threshold |
 
 ## DJL: Advanced NDManager Control
 

@@ -59,11 +59,12 @@ object ZTokenizer:
   /** Create a regex-based tokenizer that splits on the given pattern.
     * A simple character-level vocabulary is built from printable ASCII.
     *
-    * @param pattern  regex pattern to split on (default: "\\W+" = non-word chars)
-    * @param config   tokenizer configuration
+    * @param pattern    regex pattern to split on (default: "\\W+" = non-word chars)
+    * @param config     tokenizer configuration
+    * @param vocabRange range of character codes to build vocabulary from (default: 32 to 126)
     */
-  def regex(pattern: String = "\\W+", config: TokenizerConfig = TokenizerConfig()): Try[ZTokenizer] = Try {
-    val vocab = (32 to 126).map(_.toChar.toString).zipWithIndex.toMap
+  def regex(pattern: String = "\\W+", config: TokenizerConfig = TokenizerConfig(), vocabRange: Range = 32 to 126): Try[ZTokenizer] = Try {
+    val vocab = vocabRange.map(_.toChar.toString).zipWithIndex.toMap
     new ZTokenizer(
       split      = (s: String) => s.split(pattern).filter(_.nonEmpty),
       vocabulary = vocab,

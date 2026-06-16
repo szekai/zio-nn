@@ -74,8 +74,8 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
         ActivationFn.Identity.apply(42.0) == 42.0,
         math.abs(ActivationFn.Sigmoid.apply(0.0) - 0.5) < 1e-10,
         math.abs(ActivationFn.Tanh.apply(0.0)) < 1e-10,
-        ActivationFn.LeakyReLU.apply(-1.0) == -0.01,
-        ActivationFn.LeakyReLU.apply(2.0) == 2.0
+        ActivationFn.LeakyReLU().apply(-1.0) == -0.01,
+        ActivationFn.LeakyReLU().apply(2.0) == 2.0
       )
     },
     test("ActivationFn.applyVector softmax sums to 1") {
@@ -90,8 +90,8 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
         ActivationFn.ReLU.derivative(-5.0) == 0.0,
         ActivationFn.ReLU.derivative(3.0) == 1.0,
         ActivationFn.Identity.derivative(99.0) == 1.0,
-        ActivationFn.LeakyReLU.derivative(-1.0) == 0.01,
-        ActivationFn.LeakyReLU.derivative(5.0) == 1.0
+        ActivationFn.LeakyReLU().derivative(-1.0) == 0.01,
+        ActivationFn.LeakyReLU().derivative(5.0) == 1.0
       )
     },
     test("ActivationFn.Sigmoid.derivative matches s*(1-s) formula") {
@@ -114,19 +114,19 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
       assertTrue(LossFn.MAE.compute(Array(1.0, 2.0), Array(3.0, 4.0)) == 2.0)
     },
     test("LossFn.BinaryCrossEntropy.compute returns finite value") {
-      val result = LossFn.BinaryCrossEntropy.compute(Array(0.9, 0.1), Array(1.0, 0.0))
+      val result = LossFn.BinaryCrossEntropy().compute(Array(0.9, 0.1), Array(1.0, 0.0))
       assertTrue(!result.isNaN, !result.isInfinite)
     },
     test("LossFn.Huber.compute is finite") {
-      val result = LossFn.Huber.compute(Array(1.0, 2.0), Array(3.0, 4.0))
+      val result = LossFn.Huber().compute(Array(1.0, 2.0), Array(3.0, 4.0))
       assertTrue(!result.isNaN, !result.isInfinite, result > 0)
     },
     // ── EvalMetric methods ──
     test("EvalMetric.Accuracy.compute perfect match") {
-      assertTrue(EvalMetric.Accuracy.compute(Array(0.9, 0.1, 0.8), Array(1.0, 0.0, 1.0)) == 1.0)
+      assertTrue(EvalMetric.Accuracy().compute(Array(0.9, 0.1, 0.8), Array(1.0, 0.0, 1.0)) == 1.0)
     },
     test("EvalMetric.Accuracy.compute 50%") {
-      assertTrue(EvalMetric.Accuracy.compute(Array(0.9, 0.1), Array(1.0, 1.0)) == 0.5)
+      assertTrue(EvalMetric.Accuracy().compute(Array(0.9, 0.1), Array(1.0, 1.0)) == 0.5)
     },
     test("EvalMetric.Precision.compute") {
       val p = EvalMetric.Precision().compute(Array(0.9, 0.1, 0.8, 0.2), Array(1.0, 0.0, 1.0, 0.0))

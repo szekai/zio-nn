@@ -161,7 +161,7 @@ object Backend:
     case ActivationFn.Sigmoid   => DJLActivation.sigmoidBlock()
     case ActivationFn.Softmax   => DJLActivation.reluBlock()
     case ActivationFn.Identity  => Blocks.identityBlock()
-    case ActivationFn.LeakyReLU => DJLActivation.leakyReluBlock(0.01f)
+    case ActivationFn.LeakyReLU(alpha) => DJLActivation.leakyReluBlock(alpha.toFloat)
 
   private def toDJLAdvancedLayer(adv: AdvancedLayerDef): Block = adv match
     case AdvancedLayerDef.GRU(_, nOut, _, dropout) =>

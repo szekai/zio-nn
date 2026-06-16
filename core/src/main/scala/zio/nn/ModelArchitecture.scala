@@ -81,16 +81,17 @@ enum BidirectionalKind:
 // ═══════════════════════════════════════════════════════════
 
 enum ActivationFn:
-  case Tanh, ReLU, Sigmoid, Softmax, Identity, LeakyReLU
+  case Tanh, ReLU, Sigmoid, Softmax, Identity
+  case LeakyReLU(alpha: Double = 0.01)
 
   /** Apply the activation function to a single value. */
   def apply(x: Double): Double = this match
-    case Tanh     => math.tanh(x)
-    case ReLU     => math.max(0, x)
-    case Sigmoid  => 1.0 / (1.0 + math.exp(-x))
-    case Softmax  => throw UnsupportedOperationException("Softmax requires a vector input — use applyVector")
-    case Identity => x
-    case LeakyReLU => if x > 0 then x else 0.01 * x
+    case Tanh          => math.tanh(x)
+    case ReLU          => math.max(0, x)
+    case Sigmoid       => 1.0 / (1.0 + math.exp(-x))
+    case Softmax       => throw UnsupportedOperationException("Softmax requires a vector input — use applyVector")
+    case Identity      => x
+    case LeakyReLU(a)  => if x > 0 then x else a * x
 
   /** Apply the activation function to a full vector (needed for Softmax). */
   def applyVector(x: Array[Double]): Array[Double] = this match
@@ -104,19 +105,22 @@ enum ActivationFn:
     * since the full Jacobian is expensive and rarely needed standalone.
     */
   def derivative(x: Double): Double = this match
-    case ReLU     => if x > 0 then 1.0 else 0.0
-    case Sigmoid  => { val s = apply(x); s * (1.0 - s) }
-    case Tanh     => 1.0 - math.pow(apply(x), 2)
-    case Identity => 1.0
-    case LeakyReLU => if x > 0 then 1.0 else 0.01
-    case Softmax  => 1.0 // identity — full Jacobian via applyVector
+    case ReLU          => if x > 0 then 1.0 else 0.0
+    case Sigmoid       => { val s = apply(x); s * (1.0 - s) }
+    case Tanh          => 1.0 - math.pow(apply(x), 2)
+    case Identity      => 1.0
+    case LeakyReLU(a)  => if x > 0 then 1.0 else a
+    case Softmax       => 1.0 // identity — full Jacobian via applyVector
 
 // ═══════════════════════════════════════════════════════════
 //  Loss Functions
 // ═══════════════════════════════════════════════════════════
 
 enum LossFn:
-  case MSE, MAE, BinaryCrossEntropy, CategoricalCrossEntropy, Huber
+  case MSE, MAE
+  case BinaryCrossEntropy(epsilon: Double = 1e-15)
+  case CategoricalCrossEntropy(epsilon: Double = 1e-15)
+  case Huber(delta: Double = 1.0)
 
   /** Compute the loss value between predicted and actual values.
     * Both arrays must have the same length.
@@ -126,18 +130,17 @@ enum LossFn:
       predicted.zip(actual).map((p, a) => math.pow(p - a, 2)).sum / predicted.length
     case MAE =>
       predicted.zip(actual).map((p, a) => math.abs(p - a)).sum / predicted.length
-    case BinaryCrossEntropy =>
+    case BinaryCrossEntropy(epsilon) =>
       -actual.zip(predicted).map { (a, p) =>
-        val clipped = math.min(math.max(p, 1e-15), 1.0 - 1e-15)
+        val clipped = math.min(math.max(p, epsilon), 1.0 - epsilon)
         a * math.log(clipped) + (1 - a) * math.log(1 - clipped)
       }.sum / predicted.length
-    case CategoricalCrossEntropy =>
+    case CategoricalCrossEntropy(epsilon) =>
       -actual.zip(predicted).map { (a, p) =>
-        val clipped = math.min(math.max(p, 1e-15), 1.0)
+        val clipped = math.min(math.max(p, epsilon), 1.0)
         a * math.log(clipped)
       }.sum
-    case Huber =>
-      val delta = 1.0
+    case Huber(delta) =>
       predicted.zip(actual).map { (p, a) =>
         val diff = math.abs(p - a)
         if diff <= delta then 0.5 * diff * diff else delta * (diff - 0.5 * delta)
@@ -231,34 +234,34 @@ sealed trait EvalMetric:
   def name: String
 
 object EvalMetric:
-  case object Accuracy extends EvalMetric:
+  case class Accuracy(threshold: Double = 0.5) extends EvalMetric:
     def compute(predicted: Array[Double], actual: Array[Double]): Double =
-      predicted.zip(actual).count((p, a) => (p > 0.5) == (a > 0.5)).toDouble / predicted.length
-    def name = "accuracy"
+      predicted.zip(actual).count((p, a) => (p > threshold) == (a > threshold)).toDouble / predicted.length
+    def name = s"accuracy(thresh=$threshold)"
 
-  case class Precision(posLabel: Double = 1.0) extends EvalMetric:
+  case class Precision(posLabel: Double = 1.0, threshold: Double = 0.5) extends EvalMetric:
     def compute(predicted: Array[Double], actual: Array[Double]): Double =
-      val tp = predicted.zip(actual).count((p, a) => p > 0.5 && a == posLabel)
-      val fp = predicted.zip(actual).count((p, a) => p > 0.5 && a != posLabel)
+      val tp = predicted.zip(actual).count((p, a) => p > threshold && a == posLabel)
+      val fp = predicted.zip(actual).count((p, a) => p > threshold && a != posLabel)
       if tp + fp == 0 then 0.0 else tp.toDouble / (tp + fp)
-    def name = s"precision(pos=$posLabel)"
+    def name = s"precision(pos=$posLabel,thresh=$threshold)"
 
-  case class Recall(posLabel: Double = 1.0) extends EvalMetric:
+  case class Recall(posLabel: Double = 1.0, threshold: Double = 0.5) extends EvalMetric:
     def compute(predicted: Array[Double], actual: Array[Double]): Double =
-      val tp = predicted.zip(actual).count((p, a) => p > 0.5 && a == posLabel)
-      val fn = predicted.zip(actual).count((p, a) => p <= 0.5 && a == posLabel)
+      val tp = predicted.zip(actual).count((p, a) => p > threshold && a == posLabel)
+      val fn = predicted.zip(actual).count((p, a) => p <= threshold && a == posLabel)
       if tp + fn == 0 then 0.0 else tp.toDouble / (tp + fn)
-    def name = s"recall(pos=$posLabel)"
+    def name = s"recall(pos=$posLabel,thresh=$threshold)"
 
-  case class F1(posLabel: Double = 1.0) extends EvalMetric:
+  case class F1(posLabel: Double = 1.0, threshold: Double = 0.5) extends EvalMetric:
     def compute(predicted: Array[Double], actual: Array[Double]): Double =
-      val tp = predicted.zip(actual).count((p, a) => p > 0.5 && a == posLabel).toDouble
-      val fp = predicted.zip(actual).count((p, a) => p > 0.5 && a != posLabel).toDouble
-      val fn = predicted.zip(actual).count((p, a) => p <= 0.5 && a == posLabel).toDouble
+      val tp = predicted.zip(actual).count((p, a) => p > threshold && a == posLabel).toDouble
+      val fp = predicted.zip(actual).count((p, a) => p > threshold && a != posLabel).toDouble
+      val fn = predicted.zip(actual).count((p, a) => p <= threshold && a == posLabel).toDouble
       val precision = if tp + fp == 0 then 0.0 else tp / (tp + fp)
       val recall    = if tp + fn == 0 then 0.0 else tp / (tp + fn)
       if precision + recall == 0 then 0.0 else 2.0 * precision * recall / (precision + recall)
-    def name = s"f1(pos=$posLabel)"
+    def name = s"f1(pos=$posLabel,thresh=$threshold)"
 
 /** Training parameters — loaded from config alongside architecture.
   * Use with ConfigLoader.fromHoconWithTraining().

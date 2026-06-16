@@ -78,14 +78,14 @@ object DSLSpec extends ZIOSpecDefault:
           case _ => assertTrue(false)
       },
       test("all activation functions compile") {
-        val acts = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.LeakyReLU, ActivationFn.Identity)
+        val acts = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.LeakyReLU(), ActivationFn.Identity)
         val results = acts.map { act =>
           dsl.Sequential(7)(dsl.Dense(5, act), dsl.Output(1)).build
         }
         assertTrue(results.size == acts.size)
       },
       test("all loss functions compile") {
-        val losses = List(LossFn.MSE, LossFn.MAE, LossFn.BinaryCrossEntropy, LossFn.CategoricalCrossEntropy, LossFn.Huber)
+        val losses = List(LossFn.MSE, LossFn.MAE, LossFn.BinaryCrossEntropy(), LossFn.CategoricalCrossEntropy(), LossFn.Huber())
         val results = losses.map { loss =>
           dsl.Sequential(7)(dsl.Dense(10), dsl.Output(1, loss)).build
         }

@@ -28,7 +28,7 @@ object BackendSpec extends ZIOSpecDefault:
       assertTrue(Backend.compile(arch) != null)
     },
     test("all activations compile") {
-      val acts = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.Identity, ActivationFn.LeakyReLU)
+      val acts = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.Identity, ActivationFn.LeakyReLU())
       assertTrue(acts.forall { act =>
         val arch = ModelDef.Sequential(SequentialDef(7, List(LayerDef.Dense(7, 5, act), LayerDef.Output(5, 1, LossFn.MSE))))
         Backend.compile(arch) != null
