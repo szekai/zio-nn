@@ -105,10 +105,23 @@ lazy val vectordb = project
     )
   )
 
+// ── Examples: end-to-end runnable apps ──────────────────
+lazy val examples = project
+  .in(file("examples"))
+  .dependsOn(core, djl, dl4j, embeddings)
+  .settings(
+    name := "zio-nn-examples",
+    publish / skip := true,
+    libraryDependencies ++= Seq(
+      "dev.zio" %% "zio"           % zioV,
+      "dev.zio" %% "zio-streams"   % zioV
+    )
+  )
+
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(core, djl, dl4j, embeddings, vectordb)
+  .aggregate(core, djl, dl4j, embeddings, vectordb, examples)
   .settings(
     name := "zio-nn",
     publish / skip := true

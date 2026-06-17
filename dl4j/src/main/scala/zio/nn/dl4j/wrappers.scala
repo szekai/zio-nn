@@ -129,9 +129,29 @@ class ZModel(val underlying: MultiLayerNetwork):
       store.storeBatch(records).map(_ => predictions)
     }
 
-  /** Train using a DataSetIterator (streaming from disk).
-    * Iterates all batches for the specified number of epochs.
-    * The iterator is reset() at the start of each epoch.
+  /** Train using a DataSetIterator (streaming from disk or in-memory).
+    *
+    * Iterates all batches for the specified number of epochs. The iterator is
+    * `reset()` at the start of each epoch. Returns a [[FitResult]] with the
+    * per-epoch loss history.
+    *
+    * @param iterator
+    *   A DL4J DataSetIterator yielding DataSet batches (e.g. from
+    *   `MnistDataSetIterator`, `RecordReaderDataSetIterator`, or a
+    *   custom implementation).
+    * @param epochs
+    *   Number of full passes over the iterator data.
+    * @param lr
+    *   Learning rate override (defaults to the model's current LR if
+    *   called from the ZIO API with the model's configured value).
+    * @return
+    *   `Try[FitResult]` containing the loss after the last epoch and full
+    *   loss history.
+    *
+    * @example {{{
+    *   val iterator = new MnistDataSetIterator(batchSize, totalSamples, false)
+    *   model.fit(iterator, epochs = 10, lr = 0.001f)
+    * }}}
     */
   def fit(iterator: DataSetIterator, epochs: Int, lr: Float): Try[FitResult] =
     Try {
@@ -143,8 +163,23 @@ class ZModel(val underlying: MultiLayerNetwork):
       FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
     }
 
-  /** Evaluate using a DataSetIterator (streaming from disk).
-    * Iterates all batches, accumulates predictions, then computes metrics.
+  /** Evaluate using a DataSetIterator (streaming from disk or in-memory).
+    *
+    * Iterates all batches, accumulates predictions and labels, then computes
+    * each metric across the full dataset. Handles both single-output and
+    * multi-class (argmax) outputs automatically.
+    *
+    * @param iterator
+    *   A DL4J DataSetIterator (the iterator is `reset()` before iteration).
+    * @param metrics
+    *   List of [[zio.nn.EvalMetric]] to compute (e.g. `Accuracy`, `F1()`).
+    * @return
+    *   `Try[Map[String, Double]]` — metric name → computed value.
+    *
+    * @example {{{
+    *   val results = model.evaluate(testIterator, List(EvalMetric.Accuracy, EvalMetric.F1()))
+    *   // Map("accuracy" -> 0.87, "f1(pos=1.0)" -> 0.85)
+    * }}}
     */
   def evaluate(iterator: DataSetIterator, metrics: List[zio.nn.EvalMetric]): Try[Map[String, Double]] =
     Try {

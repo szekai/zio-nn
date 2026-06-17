@@ -85,11 +85,47 @@ object zioApi:
     def evaluateZ(features: Array[Array[Float]], labels: Array[Float], metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
       ZIO.attemptBlocking(model.evaluate(features, labels, metrics).get)
 
-    /** Train using a DataSetIterator (streaming batches) for N epochs. */
+    /** Train using a DataSetIterator (streaming batches) for N epochs.
+      *
+      * ZIO-ified version of [[zio.nn.dl4j.wrappers.ZModel.fit(iterator, epochs, lr)]].
+      * The iterator is `reset()` at the start of each epoch automatically.
+      *
+      * @param iterator
+      *   A DL4J DataSetIterator (e.g. `MnistDataSetIterator`).
+      * @param epochs
+      *   Number of training epochs.
+      * @param lr
+      *   Learning rate (default 0.001).
+      * @return
+      *   `Task[FitResult]` with loss history.
+      *
+      * @example {{{
+      *   for {
+      *     result <- model.fitIteratorZ(iterator, epochs = 5, lr = 0.001)
+      *     _      <- ZIO.logInfo(s"Final loss: ${result.loss}")
+      *   } yield result
+      * }}}
+      */
     def fitIteratorZ(iterator: DataSetIterator, epochs: Int, lr: Float = 0.001f): Task[FitResult] =
       ZIO.attemptBlocking(model.fit(iterator, epochs, lr).get)
 
-    /** Evaluate using a DataSetIterator (streaming batches). */
+    /** Evaluate using a DataSetIterator (streaming batches).
+      *
+      * ZIO-ified version of [[zio.nn.dl4j.wrappers.ZModel.evaluate(iterator, metrics)]].
+      * The iterator is `reset()` before iteration.
+      *
+      * @param iterator
+      *   A DL4J DataSetIterator.
+      * @param metrics
+      *   List of [[zio.nn.EvalMetric]] to compute.
+      * @return
+      *   `Task[Map[String, Double]]` — metric name → value.
+      *
+      * @example {{{
+      *   metrics <- model.evaluateIteratorZ(testIter, List(EvalMetric.Accuracy))
+      *   // Map("accuracy" -> 0.95)
+      * }}}
+      */
     def evaluateIteratorZ(iterator: DataSetIterator, metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
       ZIO.attemptBlocking(model.evaluate(iterator, metrics).get)
 

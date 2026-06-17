@@ -124,8 +124,27 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       case OptimizerDef.RMSprop(_) => Optimizer.rmsprop().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
 
   /** Train using a DJL Dataset (streaming from disk or source).
+    *
     * Creates an internal Trainer using the model's configured loss and optimizer.
     * The Dataset is consumed for the given number of epochs with the provided batch size.
+    * Each batch is closed after processing to prevent native memory leaks.
+    *
+    * @param dataset
+    *   A DJL `Dataset` (e.g. `ArrayDataset`, `RandomAccessDataset`).
+    * @param epochs
+    *   Number of training epochs.
+    * @param batchSize
+    *   Number of samples per batch.
+    * @param lr
+    *   Learning rate (default uses the model's configured optimizer default).
+    * @return
+    *   `Try[FitResult]` with loss after the final epoch.
+    *
+    * @example {{{
+    *   val ds = ArrayDataset.builder()
+    *     .optData(features).optLabels(labels).setSampling(1, false).build()
+    *   model.fitDataset(ds, epochs = 10, batchSize = 32, lr = 0.001f)
+    * }}}
     */
   def fitDataset(dataset: Dataset, epochs: Int, batchSize: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
     Try {
@@ -153,8 +172,25 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
     }
 
   /** Evaluate using a DJL Dataset (streaming from disk or source).
-    * Iterates all batches, accumulates predictions, then computes metrics.
+    *
+    * Iterates all batches, accumulates predictions and labels, then computes
+    * each metric across the full dataset. Handles both single-output and
+    * multi-class (argmax) outputs automatically.
     * Each Batch is closed after processing to prevent native memory leaks.
+    *
+    * @param dataset
+    *   A DJL `Dataset`.
+    * @param batchSize
+    *   Number of samples per batch.
+    * @param metrics
+    *   List of [[zio.nn.EvalMetric]] to compute.
+    * @return
+    *   `Try[Map[String, Double]]` — metric name → value.
+    *
+    * @example {{{
+    *   val results = model.evaluateDataset(testDataset, batchSize = 32, List(EvalMetric.Accuracy))
+    *   // Map("accuracy" -> 0.93)
+    * }}}
     */
   def evaluateDataset(dataset: Dataset, batchSize: Int, metrics: List[zio.nn.EvalMetric]): Try[Map[String, Double]] =
     Try {
