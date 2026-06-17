@@ -78,7 +78,7 @@ object DSLSpec extends ZIOSpecDefault:
           case _ => assertTrue(false)
       },
       test("all activation functions compile") {
-        val acts = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.LeakyReLU(), ActivationFn.Identity)
+        val acts = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.LeakyReLU(0.01), ActivationFn.Identity)
         val results = acts.map { act =>
           dsl.Sequential(7)(dsl.Dense(5, act), dsl.Output(1)).build
         }

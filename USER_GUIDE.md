@@ -4,29 +4,28 @@
 
 zio-nn has four layers that work together to let you write framework-agnostic neural network code:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Your Code                                              │
-│  import zio.nn.dsl.*                                     │
-│  import zio.nn.dl4j.ZModel  // or zio.nn.djl.ZModel      │
-│  val arch = Sequential(7)(LSTM(64), Dense(32), Output(1))│
-│  val model = ZModel.create(arch, "m").get                │
-│  model.predict(features)                                 │
-├─────────────────────────────────────────────────────────┤
-│  DSL Layer (core)                                       │
-│  ModelDef → SequentialDef → LayerDef → ActivationFn     │
-│  Pure data — zero framework deps                        │
-├─────────────────────────────────────────────────────────┤
-│  Backend Layer (djl / dl4j)                             │
-│  Backend.compile(ModelDef) → Block / MultiLayerNetwork  │
-│  ZModel wraps native model objects                      │
-├─────────────────────────────────────────────────────────┤
-│  Embeddings Module (dl4j-embeddings)                    │
-│  Word2Vec.train(), .load(), .toEmbeddingLayer()         │
-├─────────────────────────────────────────────────────────┤
-│  Native Framework                                       │
-│  ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork     │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["Your Code"] --> B["DSL Layer (core)"]
+    B --> C["Backend Layer (djl / dl4j)"]
+    C --> D["Embeddings Module (dl4j-embeddings)"]
+    C --> E["Native Framework"]
+
+    A1["Sequential(7)(LSTM(64), Dense(32), Output(1))"]
+    A2["ZModel.create(arch, &quot;m&quot;).get"]
+    A3["model.predict(features)"]
+    A1 --> A2 --> A3
+
+    B1["ModelDef / SequentialDef / LayerDef / ActivationFn"]
+    B2["Pure data — zero framework deps"]
+    B1 --> B2
+
+    C1["Backend.compile(ModelDef) → Block / MultiLayerNetwork"]
+    C2["ZModel wraps native model objects"]
+    C1 --> C2
+
+    E1["ai.djl.Model (PyTorch/ONNX/TF)"]
+    E2["MultiLayerNetwork (DL4J)"]
 ```
 
 ## How It Works
@@ -89,13 +88,19 @@ val djlModel = ZModel.create(arch, "my-model").get
 
 The unified API converts `Array[Array[Float]]` to/from the framework's native tensor format internally:
 
-```
-Your Code                    ZModel                   Framework
-─────────                    ──────                   ─────────
-predict(features)  ───→  NDList(features)   ───→  model.predict()
-        ↑                      │                         │
-        │              Array[Float]              NDList output
-        └──────────────────────┘─────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant User as Your Code
+    participant ZM as ZModel
+    participant TO as TensorOps
+    participant Native as Framework
+
+    User->>ZM: predict(features: Array[Array[Float]])
+    ZM->>TO: convert to NDList / INDArray
+    TO->>Native: model.predict(nativeTensor)
+    Native-->>TO: NDList / INDArray output
+    TO-->>ZM: convert to Array[Float]
+    ZM-->>User: Array[Float]
 ```
 
 ```scala
@@ -123,15 +128,23 @@ import zio.nn.dl4j.Backend
 
 ## Lifecycle
 
-```
-create(arch, name)
-  │
-  ├── predict(features)  →  Array[Float]
-  ├── predict(features)  →  Array[Float]   (reuse model)
-  ├── fit(features, labels, 50)  →  FitResult
-  ├── save(path)
-  │
-  └── close()   ← always call this
+```mermaid
+stateDiagram-v2
+    [*] --> Created: ZModel.create(arch, name)
+    Created --> Trained: fit(features, labels, 50)
+    Created --> Saved: save(path)
+    Created --> Predict: predict(features)
+    Predict --> Predict: predict(features) (reuse)
+    Predict --> Trained: fit(...)
+    Trained --> Saved: save(path)
+    Saved --> Loaded: ZModel.load(path)
+    Loaded --> Predict: predict(features)
+    Loaded --> Trained: fit(...)
+    Predict --> Closed: close()
+    Trained --> Closed: close()
+    Saved --> Closed: close()
+    Loaded --> Closed: close()
+    Closed --> [*]
 ```
 
 **Resource management options:**
@@ -225,15 +238,27 @@ Sequential(3)(                                    // 3 input channels
 
 LSTM (6 equations, 3 gates + cell state) vs GRU (4 equations, 2 gates):
 
-```
-LSTM:  f_t = σ(W_f·[h_{t-1},x_t]+b_f)  i_t = σ(W_i·[h_{t-1},x_t]+b_i)
-       o_t = σ(W_o·[h_{t-1},x_t]+b_o)  c̃_t = tanh(W_c·[h_{t-1},x_t]+b_c)
-       c_t = f_t ⊙ c_{t-1} + i_t ⊙ c̃_t  h_t = o_t ⊙ tanh(c_t)
+$$
+\begin{aligned}
+f_t &= \sigma(W_f \cdot [h_{t-1}, x_t] + b_f) \\
+i_t &= \sigma(W_i \cdot [h_{t-1}, x_t] + b_i) \\
+o_t &= \sigma(W_o \cdot [h_{t-1}, x_t] + b_o) \\
+\tilde{c}_t &= \tanh(W_c \cdot [h_{t-1}, x_t] + b_c) \\
+c_t &= f_t \odot c_{t-1} + i_t \odot \tilde{c}_t \\
+h_t &= o_t \odot \tanh(c_t)
+\end{aligned}
+$$
 
-GRU:   z_t = σ(W_z·[h_{t-1},x_t]+b_z)  r_t = σ(W_r·[h_{t-1},x_t]+b_r)
-       h̃_t = tanh(W_h·[r_t ⊙ h_{t-1},x_t]+b_h)
-       h_t = (1-z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
-```
+GRU:
+
+$$
+\begin{aligned}
+z_t &= \sigma(W_z \cdot [h_{t-1}, x_t] + b_z) \\
+r_t &= \sigma(W_r \cdot [h_{t-1}, x_t] + b_r) \\
+\tilde{h}_t &= \tanh(W_h \cdot [r_t \odot h_{t-1}, x_t] + b_h) \\
+h_t &= (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t
+\end{aligned}
+$$
 
 ### Word2Vec Embeddings (DL4J only)
 
@@ -561,6 +586,144 @@ priceStream.via(model.predictFlow).runCollect
 dataStream.via(model.fitFlow(epochs = 1)).runDrain
 ```
 
+## DataSetIterator Training (DL4J) (v0.11.0)
+
+Train and evaluate a DL4J model using a streaming `DataSetIterator` instead of
+loading all data into memory as `Array[Array[Float]]`:
+
+```scala
+import zio.nn.dl4j.ZModel
+import zio.nn.dl4j.zioApi.*
+import org.deeplearning4j.datasets.iterator.utilty.ListDataSetIterator
+import org.nd4j.linalg.dataset.DataSet
+import org.nd4j.linalg.dataset.api.iterator.DataSetIterator
+import org.nd4j.linalg.factory.Nd4j
+import scala.jdk.CollectionConverters.*
+
+// Build an iterator from in-memory data
+val iterator: DataSetIterator = {
+  val features = xorInputs.map(Nd4j.create)     // Array[Array[Float]] → INDArray
+  val labels   = xorLabels.map(l => Nd4j.create(Array[Float](l)))
+  val datasets = features.zip(labels).map((f, l) => DataSet(f, l))
+  ListDataSetIterator(datasets.toList.asJava, 2)
+}
+
+ZIO.scoped {
+  create(arch).flatMap { model =>
+    for
+      result  <- model.fitIteratorZ(iterator, epochs = 200, lr = 0.1f)
+      // result: FitResult(loss = 0.03, epochs = 200, lossHistory = List(...))
+
+      metrics <- model.evaluateIteratorZ(iterator, List(EvalMetric.Accuracy()))
+      // metrics: Map("accuracy" -> 1.0)
+    yield ()
+  }
+}
+```
+
+The iterator is `reset()` at the start of each epoch automatically. This API
+works with any DL4J `DataSetIterator` — `MnistDataSetIterator`,
+`RecordReaderDataSetIterator`, `ListDataSetIterator`, or custom implementations.
+
+See `examples/src/main/scala/zio/nn/examples/Dl4jIteratorExample.scala` for a
+complete runnable example.
+
+## Dataset Training (DJL) (v0.11.0)
+
+Train and evaluate a DJL model using a DJL `Dataset`:
+
+```scala
+import zio.nn.djl.ZModel
+import zio.nn.djl.zioApi.*
+import ai.djl.ndarray.{NDArray, NDArrays, NDManager}
+import ai.djl.training.dataset.{ArrayDataset, Dataset}
+
+// Build a dataset from in-memory data
+def buildDataset(ndm: NDManager): Dataset = {
+  val data   = ndm.create(xorInputs.flatten).reshape(4, 2)
+  val labels = ndm.create(xorLabels.map(Array[Float](_).toArray).flatten).reshape(4, 1)
+  ArrayDataset.Builder()
+    .setData(data).optLabels(labels)
+    .build()
+}
+
+ZIO.scoped {
+  ZIO.fromAutoCloseable(ZIO.attempt(NDManager.newBaseManager())).flatMap { implicit ndm =>
+    create(arch).flatMap { model =>
+      for
+        trainDs <- ZIO.attempt(buildDataset(ndm))
+        result  <- model.fitDatasetZ(trainDs, epochs = 200, batchSize = 2, lr = 0.1f)
+        // result: FitResult(loss = 0.03, epochs = 200)
+
+        evalDs <- ZIO.attempt(buildDataset(ndm))
+        metrics <- model.evaluateDatasetZ(evalDs, batchSize = 2, List(EvalMetric.Accuracy()))
+        // metrics: Map("accuracy" -> 1.0)
+      yield ()
+    }
+  }
+}
+```
+
+The DJL `Dataset` abstraction supports both in-memory (`ArrayDataset`) and
+random-access (`RandomAccessDataset`) sources, making it suitable for large
+datasets that don't fit in memory.
+
+See `examples/src/main/scala/zio/nn/examples/DjlDatasetExample.scala` for a
+complete runnable example.
+
+## RNN Time-Step Inference (v0.11.0)
+
+Feed inputs one step at a time while preserving the RNN's internal hidden
+state — the building block for auto-regressive generation and real-time
+sequence prediction:
+
+```scala
+import zio.nn.dl4j.ZModel
+import zio.nn.dl4j.zioApi.*
+import org.nd4j.linalg.factory.Nd4j
+
+ZIO.scoped {
+  create(arch).flatMap { model =>
+    for
+      // Prime the state with a seed sequence
+      _     <- model.rnnTimeStepZ(Nd4j.create(Array(Array(0.1f))))
+      _     <- model.rnnTimeStepZ(Nd4j.create(Array(Array(0.2f))))
+
+      // Generate: feed previous output back as next input
+      out1  <- model.rnnTimeStepZ(Nd4j.create(Array(Array(0.3f))))   // continues from seed state
+      _     <- ZIO.logInfo(s"Step output: $out1")
+
+      // Reset state when starting a new independent sequence
+      _     <- model.rnnClearPreviousStateZ
+      fresh <- model.rnnTimeStepZ(Array(Array(0.5f)))   // starts from zero state
+    yield ()
+  }
+}
+```
+
+- `rnnTimeStepZ` — single time-step forward pass (preserves hidden state)
+- `rnnClearPreviousStateZ` — reset hidden state to zero for a new sequence
+
+**Difference from `predictZ`:** `predictZ` treats each call as an independent
+forward pass. `rnnTimeStepZ` accumulates state across calls, so step N+1
+receives the hidden state from step N. Call `rnnClearPreviousStateZ` to reset.
+
+See `examples/src/main/scala/zio/nn/examples/RnnTimeStepExample.scala` for a
+complete runnable example.
+
+## Examples Module
+
+The `examples/` module contains self-contained, runnable example programs that
+demonstrate the full lifecycle for each new API:
+
+```bash
+sbt "examples/runMain zio.nn.examples.Dl4jIteratorExample"   # DL4J DataSetIterator
+sbt "examples/runMain zio.nn.examples.DjlDatasetExample"     # DJL Dataset
+sbt "examples/runMain zio.nn.examples.RnnTimeStepExample"    # RNN time-step
+```
+
+Just run `sbt "examples/run"` for an interactive menu.
+
 ## Vector Database / RAG (v0.10.0)
 
 Store model predictions in a vector database for retrieval-augmented generation (RAG), semantic search, and similarity queries.
@@ -783,3 +946,27 @@ Change one line in `build.sbt` — zero code changes:
 | Python deps | libtorch (auto-downloaded) | None |
 | ONNX/TF/XGBoost | ✅ via engine param | No |
 | Best for | Cloud GPU, PyTorch ecosystem | On-prem, big data pipelines |
+
+## References
+
+```bibtex
+@article{hochreiter1997lstm,
+  author  = {Hochreiter, Sepp and Schmidhuber, J{\"u}rgen},
+  title   = {Long Short-Term Memory},
+  journal = {Neural Computation},
+  year    = {1997},
+  volume  = {9},
+  number  = {8},
+  pages   = {1735--1780},
+  doi     = {10.1162/neco.1997.9.8.1735}
+}
+
+@article{cho2014gru,
+  author  = {Cho, Kyunghyun and van Merri{\"e}nboer, Bart and Gulcehre, Caglar and Bahdanau, Dzmitry and Bougares, Fethi and Schwenk, Holger and Bengio, Yoshua},
+  title   = {Learning Phrase Representations using RNN Encoder--Decoder for Statistical Machine Translation},
+  journal = {Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year    = {2014},
+  pages   = {1724--1734},
+  doi     = {10.3115/v1/D14-1179}
+}
+```

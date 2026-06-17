@@ -7,6 +7,7 @@ import org.deeplearning4j.util.ModelSerializer
 import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.dataset.DataSet
 import org.nd4j.linalg.factory.Nd4j
+import org.nd4j.linalg.dataset.api.iterator.DataSetIterator
 import java.io.File
 import java.nio.file.Path
 import scala.util.Try
@@ -57,6 +58,19 @@ class ZModel(val underlying: MultiLayerNetwork):
       for _ <- 1 to epochs do { underlying.fit(ds); history += underlying.score(ds) }
       FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
     }
+
+  /** RNN: single time-step forward pass, maintaining internal state.
+    * The network retains its hidden state between calls.
+    * Call rnnClearPreviousState() to reset between independent sequences.
+    */
+  def rnnTimeStep(input: INDArray): Try[INDArray] =
+    Try(underlying.rnnTimeStep(input))
+
+  /** RNN: reset internal state of all recurrent layers.
+    * Must be called before processing a new independent sequence.
+    */
+  def rnnClearPreviousState(): Try[Unit] =
+    Try(underlying.rnnClearPreviousState())
 
   /** ESCAPE HATCH: raw DL4J prediction with INDArray. */
   def predictRaw(input: INDArray): Try[INDArray] =
@@ -113,6 +127,90 @@ class ZModel(val underlying: MultiLayerNetwork):
           VectorRecord(id, vec)
         }
       store.storeBatch(records).map(_ => predictions)
+    }
+
+  /** Train using a DataSetIterator (streaming from disk or in-memory).
+    *
+    * Iterates all batches for the specified number of epochs. The iterator is
+    * `reset()` at the start of each epoch. Returns a [[FitResult]] with the
+    * per-epoch loss history.
+    *
+    * @param iterator
+    *   A DL4J DataSetIterator yielding DataSet batches (e.g. from
+    *   `MnistDataSetIterator`, `RecordReaderDataSetIterator`, or a
+    *   custom implementation).
+    * @param epochs
+    *   Number of full passes over the iterator data.
+    * @param lr
+    *   Learning rate override (defaults to the model's current LR if
+    *   called from the ZIO API with the model's configured value).
+    * @return
+    *   `Try[FitResult]` containing the loss after the last epoch and full
+    *   loss history.
+    *
+    * @example {{{
+    *   val iterator = new MnistDataSetIterator(batchSize, totalSamples, false)
+    *   model.fit(iterator, epochs = 10, lr = 0.001f)
+    * }}}
+    */
+  def fit(iterator: DataSetIterator, epochs: Int, lr: Float): Try[FitResult] =
+    Try {
+      val history = scala.collection.mutable.ListBuffer[Double]()
+      for _ <- 1 to epochs do
+        iterator.reset()
+        while iterator.hasNext do underlying.fit(iterator.next())
+        history += underlying.score()
+      FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
+    }
+
+  /** Evaluate using a DataSetIterator (streaming from disk or in-memory).
+    *
+    * Iterates all batches, accumulates predictions and labels, then computes
+    * each metric across the full dataset. Handles both single-output and
+    * multi-class (argmax) outputs automatically.
+    *
+    * @param iterator
+    *   A DL4J DataSetIterator (the iterator is `reset()` before iteration).
+    * @param metrics
+    *   List of [[zio.nn.EvalMetric]] to compute (e.g. `Accuracy`, `F1()`).
+    * @return
+    *   `Try[Map[String, Double]]` — metric name → computed value.
+    *
+    * @example {{{
+    *   val results = model.evaluate(testIterator, List(EvalMetric.Accuracy, EvalMetric.F1()))
+    *   // Map("accuracy" -> 0.87, "f1(pos=1.0)" -> 0.85)
+    * }}}
+    */
+  def evaluate(iterator: DataSetIterator, metrics: List[zio.nn.EvalMetric]): Try[Map[String, Double]] =
+    Try {
+      iterator.reset()
+      val predBuf = scala.collection.mutable.ArrayBuffer[Float]()
+      val labelBuf = scala.collection.mutable.ArrayBuffer[Float]()
+      var nOut = -1
+      while iterator.hasNext do
+        val ds = iterator.next()
+        val output = underlying.output(ds.getFeatures)
+        val batchSize = ds.getFeatures.shape()(0).toInt
+        if nOut < 0 then nOut = output.length().toInt / batchSize
+        val outLen = output.length().toInt
+        val outArr = new Array[Float](outLen)
+        for i <- 0 until outLen do outArr(i) = output.getFloat(i.toLong)
+        predBuf ++= outArr
+        val lblLen = ds.getLabels.length().toInt
+        val lblArr = new Array[Float](lblLen)
+        for i <- 0 until lblLen do lblArr(i) = ds.getLabels.getFloat(i.toLong)
+        labelBuf ++= lblArr
+
+      val predDouble = predBuf.toArray.map(_.toDouble)
+      val actualDouble = labelBuf.toArray.map(_.toDouble)
+      if nOut <= 1 then
+        metrics.map(m => m.name -> m.compute(predDouble, actualDouble)).toMap
+      else
+        val pred2D = predDouble.grouped(nOut).toArray
+        val act2D  = actualDouble.grouped(nOut).toArray
+        val predClass = pred2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+        val actClass  = act2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+        metrics.map(m => m.name -> m.compute(predClass, actClass)).toMap
     }
 
   def summary: String =

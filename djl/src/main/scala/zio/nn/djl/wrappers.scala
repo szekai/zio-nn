@@ -123,6 +123,112 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       case OptimizerDef.SGD(_)     => Optimizer.sgd().setLearningRateTracker(Tracker.fixed(effectiveLr)).build()
       case OptimizerDef.RMSprop(_) => Optimizer.rmsprop().optLearningRateTracker(Tracker.fixed(effectiveLr)).build()
 
+  /** Train using a DJL Dataset (streaming from disk or source).
+    *
+    * Creates an internal Trainer using the model's configured loss and optimizer.
+    * The Dataset is consumed for the given number of epochs with the provided batch size.
+    * Each batch is closed after processing to prevent native memory leaks.
+    *
+    * @param dataset
+    *   A DJL `Dataset` (e.g. `ArrayDataset`, `RandomAccessDataset`).
+    * @param epochs
+    *   Number of training epochs.
+    * @param batchSize
+    *   Number of samples per batch.
+    * @param lr
+    *   Learning rate (default uses the model's configured optimizer default).
+    * @return
+    *   `Try[FitResult]` with loss after the final epoch.
+    *
+    * @example {{{
+    *   val ds = ArrayDataset.builder()
+    *     .optData(features).optLabels(labels).setSampling(1, false).build()
+    *   model.fitDataset(ds, epochs = 10, batchSize = 32, lr = 0.001f)
+    * }}}
+    */
+  def fitDataset(dataset: Dataset, epochs: Int, batchSize: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
+    Try {
+      val opt = selectOptimizer(lr)
+      val config = new DefaultTrainingConfig(selectLoss(lossFn))
+      config.optOptimizer(opt)
+      config.optInitializer(new XavierInitializer(), "weight")
+      val trainer = underlying.newTrainer(config)
+      try
+        val inputSize = Option(underlying.getBlock.getInputShapes)
+          .flatMap(a => if a.isEmpty then None else Some(a.head.get(0)))
+          .getOrElse(1L)
+        trainer.initialize(new Shape(batchSize.toLong, inputSize))
+        val lossHistory = scala.collection.mutable.ListBuffer[Double]()
+        for _ <- 1 to epochs do
+          val dataIter = dataset.getData(ndm)
+          dataIter.forEach { batch =>
+            try
+              ai.djl.training.EasyTrain.trainBatch(trainer, batch)
+            finally batch.close()
+          }
+          lossHistory += trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(lossHistory.lastOption.getOrElse(Double.NaN), epochs, lossHistory.toList)
+      finally trainer.close()
+    }
+
+  /** Evaluate using a DJL Dataset (streaming from disk or source).
+    *
+    * Iterates all batches, accumulates predictions and labels, then computes
+    * each metric across the full dataset. Handles both single-output and
+    * multi-class (argmax) outputs automatically.
+    * Each Batch is closed after processing to prevent native memory leaks.
+    *
+    * @param dataset
+    *   A DJL `Dataset`.
+    * @param batchSize
+    *   Number of samples per batch.
+    * @param metrics
+    *   List of [[zio.nn.EvalMetric]] to compute.
+    * @return
+    *   `Try[Map[String, Double]]` — metric name → value.
+    *
+    * @example {{{
+    *   val results = model.evaluateDataset(testDataset, batchSize = 32, List(EvalMetric.Accuracy))
+    *   // Map("accuracy" -> 0.93)
+    * }}}
+    */
+  def evaluateDataset(dataset: Dataset, batchSize: Int, metrics: List[zio.nn.EvalMetric]): Try[Map[String, Double]] =
+    Try {
+      val predBuf = scala.collection.mutable.ArrayBuffer[Float]()
+      val labelBuf = scala.collection.mutable.ArrayBuffer[Float]()
+      var nOut = -1
+      val pred = predictorRaw()
+      try
+        val dataIter = dataset.getData(ndm)
+        dataIter.forEach { batch =>
+          try
+            val result = pred.predict(batch.getData()).get
+            val batchSz = batch.getSize
+            if nOut < 0 then nOut = result.head().size().toInt / batchSz
+            val outLen = result.head().size().toInt
+            val outArr = new Array[Float](outLen)
+            System.arraycopy(result.head().toFloatArray, 0, outArr, 0, outLen)
+            predBuf ++= outArr
+            val lblLen = batch.getLabels().head().size().toInt
+            val lblArr = new Array[Float](lblLen)
+            System.arraycopy(batch.getLabels().head().toFloatArray, 0, lblArr, 0, lblLen)
+            labelBuf ++= lblArr
+          finally batch.close()
+        }
+      finally pred.close()
+
+      val predDouble = predBuf.toArray.map(_.toDouble)
+      val actualDouble = labelBuf.toArray.map(_.toDouble)
+      if nOut <= 1 then
+        metrics.map(m => m.name -> m.compute(predDouble, actualDouble)).toMap
+      else
+        val pred2D = predDouble.grouped(nOut).toArray
+        val act2D  = actualDouble.grouped(nOut).toArray
+        val predClass = pred2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+        val actClass  = act2D.map(_.zipWithIndex.maxBy(_._1)._2.toDouble)
+        metrics.map(m => m.name -> m.compute(predClass, actClass)).toMap
+    }
+
   /** ESCAPE HATCH: raw DJL prediction with NDList. */
   def predictRaw(input: NDList): Try[NDList] = Try {
     val pred = Predictor(underlying, new NoopTranslator(), Device.cpu(), false)

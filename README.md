@@ -213,50 +213,59 @@ Sequential(7)(
 GRU (Gated Recurrent Unit) is a simpler alternative to LSTM with fewer gates and no separate cell state:
 
 **LSTM equations** (3 gates + cell state):
-```
-f_t = σ(W_f·[h_{t-1}, x_t] + b_f)   // forget gate
-i_t = σ(W_i·[h_{t-1}, x_t] + b_i)   // input gate
-o_t = σ(W_o·[h_{t-1}, x_t] + b_o)   // output gate
-c̃_t = tanh(W_c·[h_{t-1}, x_t] + b_c) // cell candidate
-c_t = f_t ⊙ c_{t-1} + i_t ⊙ c̃_t     // cell state
-h_t = o_t ⊙ tanh(c_t)                // hidden state
-```
+
+$$
+\begin{aligned}
+f_t &= \sigma(W_f \cdot [h_{t-1}, x_t] + b_f) &&\text{// forget gate} \\
+i_t &= \sigma(W_i \cdot [h_{t-1}, x_t] + b_i) &&\text{// input gate} \\
+o_t &= \sigma(W_o \cdot [h_{t-1}, x_t] + b_o) &&\text{// output gate} \\
+\tilde{c}_t &= \tanh(W_c \cdot [h_{t-1}, x_t] + b_c) &&\text{// cell candidate} \\
+c_t &= f_t \odot c_{t-1} + i_t \odot \tilde{c}_t &&\text{// cell state} \\
+h_t &= o_t \odot \tanh(c_t) &&\text{// hidden state}
+\end{aligned}
+$$
 
 **GRU equations** (2 gates, no cell state):
-```
-z_t = σ(W_z·[h_{t-1}, x_t] + b_z)   // update gate
-r_t = σ(W_r·[h_{t-1}, x_t] + b_r)   // reset gate
-h̃_t = tanh(W_h·[r_t ⊙ h_{t-1}, x_t] + b_h)
-h_t = (1-z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
-```
+
+$$
+\begin{aligned}
+z_t &= \sigma(W_z \cdot [h_{t-1}, x_t] + b_z) &&\text{// update gate} \\
+r_t &= \sigma(W_r \cdot [h_{t-1}, x_t] + b_r) &&\text{// reset gate} \\
+\tilde{h}_t &= \tanh(W_h \cdot [r_t \odot h_{t-1}, x_t] + b_h) \\
+h_t &= (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t
+\end{aligned}
+$$
 
 GRU has fewer parameters and often converges faster. Use GRU when you want faster training; use LSTM when you need the extra expressiveness of a separate cell state.
 
 ### Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Your Code (import zio.nn.dsl.*, zio.nn.*)              │
-│  Sequential(1)(Embedding(10k,300), BiDirectional(       │
-│    LSTM(256)), MultiHeadAttention(256,8), Output(2))    │
-├─────────────────────────────────────────────────────────┤
-│  DSL Layer (core)                                       │
-│  LayerDef (LSTM,Dense,Output,BatchNorm,Dropout,Conv2D,  │
-│    MaxPool2D,Flatten,Embedding)                         │
-│  + AdvancedLayerDef (GRU,BiDirectional,MultiHeadAttn)   │
-│  Wrapped in AnyLayer for unified SequentialDef          │
-├─────────────────────────────────────────────────────────┤
-│  Backend Layer (djl / dl4j)                             │
-│  Backend.compile(ModelDef) → Block / MultiLayerNetwork  │
-│  ZModel wraps native model objects                      │
-├─────────────────────────────────────────────────────────┤
-│  Embeddings Module (dl4j-embeddings)                    │
-│  Word2Vec.train(), .load(), .similarity(), .wordsNearest│
-│  Word2VecModel → EmbeddingWeights → LayerSpec bridge    │
-├─────────────────────────────────────────────────────────┤
-│  Native Framework                                       │
-│  ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork     │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph "Your Code"
+        A["import zio.nn.dsl.*, zio.nn.*"]
+    end
+    subgraph "DSL Layer (core)"
+        B["LayerDef (LSTM, Dense, Output, BatchNorm, Dropout, Conv2D, MaxPool2D, Flatten, Embedding)<br/>+ AdvancedLayerDef (GRU, BiDirectional, MultiHeadAttention)<br/>AnyLayer → unified SequentialDef"]
+    end
+    subgraph "Backend Layer"
+        C["Backend.compile(ModelDef) → Block / MultiLayerNetwork<br/>ZModel wraps native model objects"]
+        D["djl"]
+        E["dl4j"]
+    end
+    subgraph "Embeddings Module"
+        F["Word2Vec.train(), .load(), .similarity(), .wordsNearest()<br/>Word2VecModel → EmbeddingWeights → LayerSpec bridge"]
+    end
+    subgraph "Native Framework"
+        G["ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork (ND4J)"]
+    end
+    A --> B
+    B --> C
+    C --> D
+    C --> E
+    D --> G
+    E --> G
+    F --> G
 ```
 
 ### Escape Hatches (framework-specific)
@@ -668,6 +677,30 @@ val psi2 = EvaluationMetrics.psi(expected, actual, numBins = 20, smoothing = 1e-
 
 ZIO-native training callbacks for per-epoch hooks, early stopping, and learning rate scheduling.
 
+```pseudocode
+Algorithm: SGD Training Loop with Callbacks
+Input: Model parameters θ, dataset (X, y), learning rate η, epochs E
+Output: Trained model θ, loss history L
+
+L ← empty list
+for epoch ← 1 to E do
+    notify(TrainingEvent.EpochStart(epoch))
+    for each mini-batch (X_b, y_b) do
+        y_pred ← forward(model, X_b)          // forward pass
+        loss ← compute_loss(y_pred, y_b)      // loss computation
+        ∇θ ← backward(loss, model)            // gradient computation
+        θ ← θ − η · ∇θ                        // parameter update
+    end for
+    L.append(loss)
+    notify(TrainingEvent.EpochEnd(epoch, loss, elapsed_ms))
+    if early_stopping_triggered(L) then
+        break
+    end if
+end for
+notify(TrainingEvent.TrainEnd(FitResult(loss, epoch)))
+return θ, L
+```
+
 ### Training Callbacks
 
 ```scala
@@ -987,4 +1020,46 @@ val pipeline = ImagePipeline(ImageTransformDef.Resize(32, 32))
 val transformer = ImageTransformer(pipeline)
 val pixels = transformer.transform(imageBytes).get
 // Array of (32 * 32 * 3) float values, grouped by 32 (width)
+```
+
+---
+
+## References
+
+```bibtex
+@article{hochreiter1997lstm,
+  author  = {Hochreiter, Sepp and Schmidhuber, J{\"u}rgen},
+  title   = {Long Short-Term Memory},
+  journal = {Neural Computation},
+  volume  = {9},
+  number  = {8},
+  pages   = {1735--1780},
+  year    = {1997},
+  doi     = {10.1162/neco.1997.9.8.1735}
+}
+
+@article{cho2014gru,
+  author  = {Cho, Kyunghyun and van Merri{\"e}nboer, Bart and Bahdanau, Dzmitry and Bengio, Yoshua},
+  title   = {On the Properties of Neural Machine Translation: Encoder--Decoder Approaches},
+  journal = {arXiv preprint arXiv:1409.1259},
+  year    = {2014}
+}
+
+@inproceedings{kingma2015adam,
+  author    = {Kingma, Diederik P. and Ba, Jimmy},
+  title     = {Adam: A Method for Stochastic Optimization},
+  booktitle = {Proceedings of the 3rd International Conference on Learning Representations (ICLR)},
+  year      = {2015}
+}
+
+@article{rumelhart1986backprop,
+  author  = {Rumelhart, David E. and Hinton, Geoffrey E. and Williams, Ronald J.},
+  title   = {Learning Representations by Back-Propagating Errors},
+  journal = {Nature},
+  volume  = {323},
+  number  = {6088},
+  pages   = {533--536},
+  year    = {1986},
+  doi     = {10.1038/323533a0}
+}
 ```

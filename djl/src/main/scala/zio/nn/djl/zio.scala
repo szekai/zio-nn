@@ -3,6 +3,7 @@ package zio.nn.djl
 import zio.*
 import zio.stream.*
 import zio.nn.{EncodingResult, FitResult, TrainingCallback, TrainingEvent, EarlyStopping, LRSchedule}
+import ai.djl.training.dataset.Dataset
 import java.nio.file.Path
 
 object zioApi:
@@ -72,6 +73,52 @@ object zioApi:
 
     def evaluateZ(features: Array[Array[Float]], labels: Array[Float], metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
       ZIO.attemptBlocking(model.evaluate(features, labels, metrics).get)
+
+    /** Train using a DJL Dataset (streaming batches) for N epochs.
+      *
+      * ZIO-ified version of [[zio.nn.djl.wrappers.ZModel.fitDataset(dataset, epochs, batchSize, lr)]].
+      * The dataset is fetched in batches of `batchSize`; the underlying
+      * `Model.fit()` iterates until `dataset` is exhausted for each epoch.
+      *
+      * @param dataset
+      *   A DJL `Dataset` (e.g. `ArrayDataset`, `RandomAccessDataset` subclass).
+      * @param epochs
+      *   Number of training epochs.
+      * @param batchSize
+      *   Number of samples per batch.
+      * @param lr
+      *   Learning rate (default 0.001).
+      * @return
+      *   `Task[FitResult]` with loss history.
+      *
+      * @example {{{
+      *   val dataset = ArrayDataset.builder()
+      *     .optData(arrayFeatures).optLabels(arrayLabels).setSampling(1, false).build()
+      *   result <- model.fitDatasetZ(dataset, epochs = 10, batchSize = 32)
+      * }}}
+      */
+    def fitDatasetZ(dataset: Dataset, epochs: Int, batchSize: Int, lr: Float = 0.001f): Task[FitResult] =
+      ZIO.attemptBlocking(model.fitDataset(dataset, epochs, batchSize, lr).get)
+
+    /** Evaluate using a DJL Dataset (streaming batches).
+      *
+      * ZIO-ified version of [[zio.nn.djl.wrappers.ZModel.evaluateDataset(dataset, batchSize, metrics)]].
+      *
+      * @param dataset
+      *   A DJL `Dataset`.
+      * @param batchSize
+      *   Batch size to use during evaluation.
+      * @param metrics
+      *   List of [[zio.nn.EvalMetric]] to compute.
+      * @return
+      *   `Task[Map[String, Double]]` — metric name → value.
+      *
+      * @example {{{
+      *   results <- model.evaluateDatasetZ(testDataset, batchSize = 32, List(EvalMetric.Accuracy))
+      * }}}
+      */
+    def evaluateDatasetZ(dataset: Dataset, batchSize: Int, metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
+      ZIO.attemptBlocking(model.evaluateDataset(dataset, batchSize, metrics).get)
 
     def predictAndStoreZ(
       features: Array[Array[Float]],

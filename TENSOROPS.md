@@ -1,5 +1,15 @@
 # Tensor Operations Guide
 
+```mermaid
+flowchart LR
+    Input --> Shape
+    Shape --> Slice
+    Slice --> Arithmetic["Add / Sub / Mul / Div"]
+    Arithmetic --> MatMul
+    MatMul --> Reshape
+    Reshape --> Output
+```
+
 ## Quick Start
 
 Identical API for both backends. Swap the JAR, not the code.
@@ -103,3 +113,14 @@ val result = ind.reshape(2, 3)
 ```
 
 Use `import zio.nn.implicits.*` to convert between unified and native types.
+
+## References
+
+```bibtex
+@book{goodfellow2016deep,
+  title={Deep Learning},
+  author={Goodfellow, Ian and Bengio, Yoshua and Courville, Aaron},
+  year={2016},
+  publisher={MIT Press}
+}
+```

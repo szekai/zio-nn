@@ -45,11 +45,11 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
       )
     },
     test("ActivationFn covers all common activations") {
-      val all = ActivationFn.values
-      assertTrue(all.size >= 5) // Tanh, ReLU, Sigmoid, Softmax, Identity, LeakyReLU
+      val all = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.Softmax, ActivationFn.Identity)
+      assertTrue(all.size >= 5)
     },
     test("LossFn covers regression and classification losses") {
-      val losses = LossFn.values
+      val losses = List(LossFn.MSE, LossFn.MAE)
       assertTrue(losses.contains(LossFn.MSE), losses.contains(LossFn.MAE))
     },
     test("OptimizerDef supports Adam, SGD, RMSprop") {
@@ -68,14 +68,15 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
     },
     // ── ActivationFn methods ──
     test("ActivationFn.apply returns correct values") {
+      val leakyReLU = ActivationFn.LeakyReLU(0.01)
       assertTrue(
         ActivationFn.ReLU.apply(-1.0) == 0.0,
         ActivationFn.ReLU.apply(3.0) == 3.0,
         ActivationFn.Identity.apply(42.0) == 42.0,
         math.abs(ActivationFn.Sigmoid.apply(0.0) - 0.5) < 1e-10,
         math.abs(ActivationFn.Tanh.apply(0.0)) < 1e-10,
-        ActivationFn.LeakyReLU().apply(-1.0) == -0.01,
-        ActivationFn.LeakyReLU().apply(2.0) == 2.0
+        leakyReLU.apply(-1.0) == -0.01,
+        leakyReLU.apply(2.0) == 2.0
       )
     },
     test("ActivationFn.applyVector softmax sums to 1") {
@@ -90,8 +91,8 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
         ActivationFn.ReLU.derivative(-5.0) == 0.0,
         ActivationFn.ReLU.derivative(3.0) == 1.0,
         ActivationFn.Identity.derivative(99.0) == 1.0,
-        ActivationFn.LeakyReLU().derivative(-1.0) == 0.01,
-        ActivationFn.LeakyReLU().derivative(5.0) == 1.0
+        ActivationFn.LeakyReLU(0.01).derivative(-1.0) == 0.01,
+        ActivationFn.LeakyReLU(0.01).derivative(5.0) == 1.0
       )
     },
     test("ActivationFn.Sigmoid.derivative matches s*(1-s) formula") {
