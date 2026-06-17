@@ -4,29 +4,28 @@
 
 zio-nn has four layers that work together to let you write framework-agnostic neural network code:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Your Code                                              │
-│  import zio.nn.dsl.*                                     │
-│  import zio.nn.dl4j.ZModel  // or zio.nn.djl.ZModel      │
-│  val arch = Sequential(7)(LSTM(64), Dense(32), Output(1))│
-│  val model = ZModel.create(arch, "m").get                │
-│  model.predict(features)                                 │
-├─────────────────────────────────────────────────────────┤
-│  DSL Layer (core)                                       │
-│  ModelDef → SequentialDef → LayerDef → ActivationFn     │
-│  Pure data — zero framework deps                        │
-├─────────────────────────────────────────────────────────┤
-│  Backend Layer (djl / dl4j)                             │
-│  Backend.compile(ModelDef) → Block / MultiLayerNetwork  │
-│  ZModel wraps native model objects                      │
-├─────────────────────────────────────────────────────────┤
-│  Embeddings Module (dl4j-embeddings)                    │
-│  Word2Vec.train(), .load(), .toEmbeddingLayer()         │
-├─────────────────────────────────────────────────────────┤
-│  Native Framework                                       │
-│  ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork     │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["Your Code"] --> B["DSL Layer (core)"]
+    B --> C["Backend Layer (djl / dl4j)"]
+    C --> D["Embeddings Module (dl4j-embeddings)"]
+    C --> E["Native Framework"]
+
+    A1["Sequential(7)(LSTM(64), Dense(32), Output(1))"]
+    A2["ZModel.create(arch, &quot;m&quot;).get"]
+    A3["model.predict(features)"]
+    A1 --> A2 --> A3
+
+    B1["ModelDef / SequentialDef / LayerDef / ActivationFn"]
+    B2["Pure data — zero framework deps"]
+    B1 --> B2
+
+    C1["Backend.compile(ModelDef) → Block / MultiLayerNetwork"]
+    C2["ZModel wraps native model objects"]
+    C1 --> C2
+
+    E1["ai.djl.Model (PyTorch/ONNX/TF)"]
+    E2["MultiLayerNetwork (DL4J)"]
 ```
 
 ## How It Works
@@ -89,13 +88,19 @@ val djlModel = ZModel.create(arch, "my-model").get
 
 The unified API converts `Array[Array[Float]]` to/from the framework's native tensor format internally:
 
-```
-Your Code                    ZModel                   Framework
-─────────                    ──────                   ─────────
-predict(features)  ───→  NDList(features)   ───→  model.predict()
-        ↑                      │                         │
-        │              Array[Float]              NDList output
-        └──────────────────────┘─────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant User as Your Code
+    participant ZM as ZModel
+    participant TO as TensorOps
+    participant Native as Framework
+
+    User->>ZM: predict(features: Array[Array[Float]])
+    ZM->>TO: convert to NDList / INDArray
+    TO->>Native: model.predict(nativeTensor)
+    Native-->>TO: NDList / INDArray output
+    TO-->>ZM: convert to Array[Float]
+    ZM-->>User: Array[Float]
 ```
 
 ```scala
@@ -123,15 +128,23 @@ import zio.nn.dl4j.Backend
 
 ## Lifecycle
 
-```
-create(arch, name)
-  │
-  ├── predict(features)  →  Array[Float]
-  ├── predict(features)  →  Array[Float]   (reuse model)
-  ├── fit(features, labels, 50)  →  FitResult
-  ├── save(path)
-  │
-  └── close()   ← always call this
+```mermaid
+stateDiagram-v2
+    [*] --> Created: ZModel.create(arch, name)
+    Created --> Trained: fit(features, labels, 50)
+    Created --> Saved: save(path)
+    Created --> Predict: predict(features)
+    Predict --> Predict: predict(features) (reuse)
+    Predict --> Trained: fit(...)
+    Trained --> Saved: save(path)
+    Saved --> Loaded: ZModel.load(path)
+    Loaded --> Predict: predict(features)
+    Loaded --> Trained: fit(...)
+    Predict --> Closed: close()
+    Trained --> Closed: close()
+    Saved --> Closed: close()
+    Loaded --> Closed: close()
+    Closed --> [*]
 ```
 
 **Resource management options:**
@@ -225,15 +238,27 @@ Sequential(3)(                                    // 3 input channels
 
 LSTM (6 equations, 3 gates + cell state) vs GRU (4 equations, 2 gates):
 
-```
-LSTM:  f_t = σ(W_f·[h_{t-1},x_t]+b_f)  i_t = σ(W_i·[h_{t-1},x_t]+b_i)
-       o_t = σ(W_o·[h_{t-1},x_t]+b_o)  c̃_t = tanh(W_c·[h_{t-1},x_t]+b_c)
-       c_t = f_t ⊙ c_{t-1} + i_t ⊙ c̃_t  h_t = o_t ⊙ tanh(c_t)
+$$
+\begin{aligned}
+f_t &= \sigma(W_f \cdot [h_{t-1}, x_t] + b_f) \\
+i_t &= \sigma(W_i \cdot [h_{t-1}, x_t] + b_i) \\
+o_t &= \sigma(W_o \cdot [h_{t-1}, x_t] + b_o) \\
+\tilde{c}_t &= \tanh(W_c \cdot [h_{t-1}, x_t] + b_c) \\
+c_t &= f_t \odot c_{t-1} + i_t \odot \tilde{c}_t \\
+h_t &= o_t \odot \tanh(c_t)
+\end{aligned}
+$$
 
-GRU:   z_t = σ(W_z·[h_{t-1},x_t]+b_z)  r_t = σ(W_r·[h_{t-1},x_t]+b_r)
-       h̃_t = tanh(W_h·[r_t ⊙ h_{t-1},x_t]+b_h)
-       h_t = (1-z_t) ⊙ h_{t-1} + z_t ⊙ h̃_t
-```
+GRU:
+
+$$
+\begin{aligned}
+z_t &= \sigma(W_z \cdot [h_{t-1}, x_t] + b_z) \\
+r_t &= \sigma(W_r \cdot [h_{t-1}, x_t] + b_r) \\
+\tilde{h}_t &= \tanh(W_h \cdot [r_t \odot h_{t-1}, x_t] + b_h) \\
+h_t &= (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t
+\end{aligned}
+$$
 
 ### Word2Vec Embeddings (DL4J only)
 
@@ -783,3 +808,27 @@ Change one line in `build.sbt` — zero code changes:
 | Python deps | libtorch (auto-downloaded) | None |
 | ONNX/TF/XGBoost | ✅ via engine param | No |
 | Best for | Cloud GPU, PyTorch ecosystem | On-prem, big data pipelines |
+
+## References
+
+```bibtex
+@article{hochreiter1997lstm,
+  author  = {Hochreiter, Sepp and Schmidhuber, J{\"u}rgen},
+  title   = {Long Short-Term Memory},
+  journal = {Neural Computation},
+  year    = {1997},
+  volume  = {9},
+  number  = {8},
+  pages   = {1735--1780},
+  doi     = {10.1162/neco.1997.9.8.1735}
+}
+
+@article{cho2014gru,
+  author  = {Cho, Kyunghyun and van Merri{\"e}nboer, Bart and Gulcehre, Caglar and Bahdanau, Dzmitry and Bougares, Fethi and Schwenk, Holger and Bengio, Yoshua},
+  title   = {Learning Phrase Representations using RNN Encoder--Decoder for Statistical Machine Translation},
+  journal = {Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  year    = {2014},
+  pages   = {1724--1734},
+  doi     = {10.3115/v1/D14-1179}
+}
+```

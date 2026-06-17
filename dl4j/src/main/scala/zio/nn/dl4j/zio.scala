@@ -3,7 +3,9 @@ package zio.nn.dl4j
 import zio.*
 import zio.stream.*
 import zio.nn.{EncodingResult, FitResult, TrainingCallback, TrainingEvent, EarlyStopping, LRSchedule}
+import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.factory.Nd4j
+import org.nd4j.linalg.dataset.api.iterator.DataSetIterator
 import java.io.File
 import java.nio.file.Path
 
@@ -32,6 +34,14 @@ object zioApi:
       loop(0, None)
 
   extension (model: ZModel)
+    /** RNN single time-step forward pass (maintains internal state between calls). */
+    def rnnTimeStepZ(input: INDArray): Task[INDArray] =
+      ZIO.attemptBlocking(model.rnnTimeStep(input).get)
+
+    /** Reset recurrent layer internal state for new independent sequence. */
+    def rnnClearPreviousStateZ: Task[Unit] =
+      ZIO.attemptBlocking(model.rnnClearPreviousState().get)
+
     def predictZ(features: Array[Array[Float]]): Task[Array[Float]] =
       ZIO.attemptBlocking(model.predict(features).get)
 
@@ -74,6 +84,14 @@ object zioApi:
 
     def evaluateZ(features: Array[Array[Float]], labels: Array[Float], metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
       ZIO.attemptBlocking(model.evaluate(features, labels, metrics).get)
+
+    /** Train using a DataSetIterator (streaming batches) for N epochs. */
+    def fitIteratorZ(iterator: DataSetIterator, epochs: Int, lr: Float = 0.001f): Task[FitResult] =
+      ZIO.attemptBlocking(model.fit(iterator, epochs, lr).get)
+
+    /** Evaluate using a DataSetIterator (streaming batches). */
+    def evaluateIteratorZ(iterator: DataSetIterator, metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
+      ZIO.attemptBlocking(model.evaluate(iterator, metrics).get)
 
     def toOnnxZ(path: java.nio.file.Path): Task[Unit] =
       ZIO.attemptBlocking(model.toOnnx(path).get)

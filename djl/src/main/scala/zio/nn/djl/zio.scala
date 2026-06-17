@@ -3,6 +3,7 @@ package zio.nn.djl
 import zio.*
 import zio.stream.*
 import zio.nn.{EncodingResult, FitResult, TrainingCallback, TrainingEvent, EarlyStopping, LRSchedule}
+import ai.djl.training.dataset.Dataset
 import java.nio.file.Path
 
 object zioApi:
@@ -72,6 +73,14 @@ object zioApi:
 
     def evaluateZ(features: Array[Array[Float]], labels: Array[Float], metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
       ZIO.attemptBlocking(model.evaluate(features, labels, metrics).get)
+
+    /** Train using a DJL Dataset (streaming batches) for N epochs. */
+    def fitDatasetZ(dataset: Dataset, epochs: Int, batchSize: Int, lr: Float = 0.001f): Task[FitResult] =
+      ZIO.attemptBlocking(model.fitDataset(dataset, epochs, batchSize, lr).get)
+
+    /** Evaluate using a DJL Dataset (streaming batches). */
+    def evaluateDatasetZ(dataset: Dataset, batchSize: Int, metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
+      ZIO.attemptBlocking(model.evaluateDataset(dataset, batchSize, metrics).get)
 
     def predictAndStoreZ(
       features: Array[Array[Float]],
