@@ -12,3 +12,6 @@ models/
 _site/
 .bsp/
 .sisyphus/
+
+# Generated Scaladoc (auto-committed by docs workflow)
+docs/api/

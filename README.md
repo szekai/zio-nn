@@ -22,7 +22,7 @@ model.close()
 
 **Swap DJL ↔ DL4J by changing one line in `build.sbt` — zero code changes.**
 
-📖 **[User Guide →](USER_GUIDE.md)** — architecture, DSL reference, escape hatches, backend swap guide.
+📖 **[User Guide →](docs/USER_GUIDE.md)** — architecture, DSL reference, escape hatches, backend swap guide.
 
 ## Modules
 
@@ -540,7 +540,7 @@ for automatic dimension calculation through the pooling and flatten layers.
 
 ## TensorOps Guide
 
-See [TENSOROPS.md](TENSOROPS.md) for full usage examples and operation reference.
+See [TENSOROPS.md](docs/TENSOROPS.md) for full usage examples and operation reference.
 
 ---
 

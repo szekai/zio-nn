@@ -1,0 +1,72 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    # Only re-generate Scaladoc when source code changes
+    paths:
+      - 'core/src/**'
+      - 'djl/src/**'
+      - 'dl4j/src/**'
+      - 'embeddings/src/**'
+      - 'vectordb/src/**'
+      - 'macros/src/**'
+      - 'build.sbt'
+  # Manual trigger for ad-hoc updates
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  scaladoc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history for sbt-dynver versioning
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: sbt
+
+      - name: Generate Scaladoc
+        run: sbt doc
+
+      - name: Collect Scaladoc from all modules
+        run: |
+          mkdir -p docs/api
+          MODULES="core djl dl4j embeddings vectordb"
+          for mod in $MODULES; do
+            api_dir="$mod/target/scala-3.8.3/api"
+            if [ -d "$api_dir" ]; then
+              echo "Copying $api_dir → docs/api/$mod/"
+              cp -r "$api_dir" "docs/api/$mod"
+            fi
+          done
+          # Also copy root-level aggregated docs if any
+          root_api="target/scala-3.8.3/api"
+          if [ -d "$root_api" ]; then
+            echo "Copying root api → docs/api/"
+            cp -r "$root_api"/* docs/api/
+          fi
+
+      - name: Commit Scaladoc
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/api/
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No Scaladoc changes to commit"
+          else
+            git commit -m "docs: auto-generate Scaladoc [skip ci]"
+            git push
+          fi

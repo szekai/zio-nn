@@ -1,0 +1,8 @@
+remote_theme: jekyll-theme-cayman
+title: zio-nn
+description: Neural Network Library for ZIO
+
+include:
+  - USER_GUIDE.md
+  - TENSOROPS.md
+  - PUBLISHING.md
