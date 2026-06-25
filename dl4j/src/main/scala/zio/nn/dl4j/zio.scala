@@ -129,6 +129,18 @@ object zioApi:
     def evaluateIteratorZ(iterator: DataSetIterator, metrics: List[zio.nn.EvalMetric]): Task[Map[String, Double]] =
       ZIO.attemptBlocking(model.evaluate(iterator, metrics).get)
 
+    def rnnTimeStepZ(input: INDArray): Task[INDArray] =
+      ZIO.attemptBlocking(model.rnnTimeStep(input).get)
+
+    def rnnClearPreviousStateZ(): Task[Unit] =
+      ZIO.attemptBlocking(model.rnnClearPreviousState().get)
+
+    def fitZ(iterator: DataSetIterator, epochs: Int): Task[FitResult] =
+      ZIO.attemptBlocking(model.fit(iterator, epochs).get)
+
+    def evaluateZ(iterator: DataSetIterator): Task[Map[String, Double]] =
+      ZIO.attemptBlocking(model.evaluate(iterator).get)
+
     def toOnnxZ(path: java.nio.file.Path): Task[Unit] =
       ZIO.attemptBlocking(model.toOnnx(path).get)
 

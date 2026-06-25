@@ -6,6 +6,7 @@ import org.deeplearning4j.nn.graph.ComputationGraph
 import org.deeplearning4j.util.ModelSerializer
 import org.nd4j.linalg.api.ndarray.INDArray
 import org.nd4j.linalg.dataset.DataSet
+import org.nd4j.linalg.dataset.api.iterator.DataSetIterator
 import org.nd4j.linalg.factory.Nd4j
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator
 import java.io.File
@@ -77,6 +78,66 @@ class ZModel(val underlying: MultiLayerNetwork):
     Try(underlying.output(input))
 
   def score(dataset: DataSet): Try[Double] = Try(underlying.score(dataset))
+
+  /** RNN: run a single time step while preserving hidden state between calls.
+    * Takes a 2D input of shape [batchSize, nIn] and returns 2D output of shape [batchSize, nOut].
+    * Subsequent calls continue from the previously preserved state.
+    * Call [[rnnClearPreviousState]] to reset the state to zeros.
+    */
+  def rnnTimeStep(input: INDArray): Try[INDArray] =
+    Try(underlying.rnnTimeStep(input))
+
+  /** RNN: clear the preserved hidden state.
+    * After this call, the next [[rnnTimeStep]] starts from zero state.
+    */
+  def rnnClearPreviousState(): Try[Unit] =
+    Try(underlying.rnnClearPreviousState())
+
+  /** Train from a DataSetIterator for the specified number of epochs.
+    * Resets the iterator between epochs if supported.
+    * Score is computed as the average loss across all batches in the iterator.
+    */
+  def fit(iterator: DataSetIterator, epochs: Int): Try[FitResult] =
+    Try {
+      val history = scala.collection.mutable.ListBuffer[Double]()
+      for _ <- 1 to epochs do
+        underlying.fit(iterator)
+        // Compute average score across all batches
+        if iterator.resetSupported then iterator.reset()
+        var totalScore = 0.0
+        var count = 0
+        while iterator.hasNext do
+          totalScore += underlying.score(iterator.next())
+          count += 1
+        if iterator.resetSupported then iterator.reset()
+        history += (if count > 0 then totalScore / count else Double.NaN)
+      FitResult(history.lastOption.getOrElse(Double.NaN), epochs, history.toList)
+    }
+
+  /** Evaluate model on a DataSetIterator.
+    * Iterates through all batches, computes argmax class predictions,
+    * and returns classification accuracy.
+    */
+  def evaluate(iterator: DataSetIterator): Try[Map[String, Double]] =
+    Try {
+      var correct = 0
+      var total = 0
+      while iterator.hasNext do
+        val batch = iterator.next()
+        val features = batch.getFeatures
+        val labels = batch.getLabels
+        val predicted = underlying.output(features)
+        val predClasses = predicted.argMax(1)
+        val actualClasses = labels.argMax(1)
+        val batchSize = features.shape()(0).toInt
+        for i <- 0 until batchSize do
+          if predClasses.getFloat(i.toLong) == actualClasses.getFloat(i.toLong) then
+            correct += 1
+          total += 1
+      iterator.reset()
+      Map("accuracy" -> (if total > 0 then correct.toDouble / total else 0.0))
+    }
+
   def save(file: File): Try[Unit] = Try(ModelSerializer.writeModel(underlying, file, false))
   def toOnnx(path: java.nio.file.Path): Try[Unit] =
     Dl4jToOnnx.saveToFile(underlying, path)

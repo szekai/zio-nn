@@ -45,11 +45,15 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
       )
     },
     test("ActivationFn covers all common activations") {
-      val all = List(ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid, ActivationFn.Softmax, ActivationFn.Identity)
+      val all = List(
+        ActivationFn.Tanh, ActivationFn.ReLU, ActivationFn.Sigmoid,
+        ActivationFn.Softmax, ActivationFn.Identity, ActivationFn.LeakyReLU(0.01)
+      )
       assertTrue(all.size >= 5)
     },
     test("LossFn covers regression and classification losses") {
-      val losses = List(LossFn.MSE, LossFn.MAE)
+      val losses = List(LossFn.MSE, LossFn.MAE, LossFn.BinaryCrossEntropy(),
+        LossFn.CategoricalCrossEntropy(), LossFn.Huber())
       assertTrue(losses.contains(LossFn.MSE), losses.contains(LossFn.MAE))
     },
     test("OptimizerDef supports Adam, SGD, RMSprop") {
@@ -115,11 +119,11 @@ object ModelArchitectureSpec extends ZIOSpecDefault:
       assertTrue(LossFn.MAE.compute(Array(1.0, 2.0), Array(3.0, 4.0)) == 2.0)
     },
     test("LossFn.BinaryCrossEntropy.compute returns finite value") {
-      val result = LossFn.BinaryCrossEntropy().compute(Array(0.9, 0.1), Array(1.0, 0.0))
+      val result = LossFn.BinaryCrossEntropy(1e-15).compute(Array(0.9, 0.1), Array(1.0, 0.0))
       assertTrue(!result.isNaN, !result.isInfinite)
     },
     test("LossFn.Huber.compute is finite") {
-      val result = LossFn.Huber().compute(Array(1.0, 2.0), Array(3.0, 4.0))
+      val result = LossFn.Huber(1.0).compute(Array(1.0, 2.0), Array(3.0, 4.0))
       assertTrue(!result.isNaN, !result.isInfinite, result > 0)
     },
     // ── EvalMetric methods ──
