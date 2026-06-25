@@ -22,6 +22,10 @@ scmInfo      := Some(ScmInfo(
 
 // publishTo — managed by sbt-ci-release
 
+val storchV  = "0.7.6-1.5.12"          // mullerhai fork (published on Maven Central)
+val torchV   = "2.7.1-1.5.12"         // bundled PyTorch version in mullerhai fork
+val javacppV = "1.5.12"               // JavaCPP version used by mullerhai fork
+
 // ── Core: framework-agnostic architecture DSL ──────────
 lazy val core = project
   .in(file("core"))
@@ -118,10 +122,29 @@ lazy val examples = project
     )
   )
 
+// ── Storch backend: PyTorch via JavaCPP ─────────────────
+lazy val storch = project
+  .in(file("storch"))
+  .dependsOn(core)
+  .settings(
+    name := "zio-nn-storch",
+    fork := true,
+    libraryDependencies ++= Seq(
+      "io.github.mullerhai" % "storch_core_3"   % storchV,
+      "org.bytedeco"        % "javacpp"         % javacppV classifier "macosx-arm64",
+      "org.bytedeco"        % "pytorch"         % torchV   classifier "macosx-arm64",
+      "org.bytedeco"        % "openblas"        % "0.3.30-1.5.12" classifier "macosx-arm64",
+      "dev.zio"            %% "zio"             % zioV,
+      "dev.zio"            %% "zio-streams"     % zioV,
+      "dev.zio"            %% "zio-test"        % zioV % Test,
+      "dev.zio"            %% "zio-test-sbt"    % zioV % Test
+    )
+  )
+
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(core, djl, dl4j, embeddings, vectordb, examples)
+  .aggregate(core, djl, dl4j, embeddings, vectordb, examples, storch)
   .settings(
     name := "zio-nn",
     publish / skip := true
