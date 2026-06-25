@@ -11,6 +11,7 @@ Write-once neural network library for ZIO. Swap DJL ↔ DL4J by changing one JAR
 | djl/      | 8 (Backend, implicits, scope, tensor/, wrappers, zio, ZTokenizer, ImageTransformer) | 6 files, 20 tests | HIGH | ✅ |
 | dl4j/     | 7 (Backend, implicits, tensor/, wrappers, zio, ZTokenizer, ImageTransformer) | 8 files, 37 tests | HIGH | ✅ |
 | embeddings/ | 1 (Word2Vec) | 1 file, 7 tests | HIGH | ✅ |
+| storch/   | 10 (Backend, ZTokenizer, ImageTransformer, wrappers, zio, implicits, tensor, tensorOps) | 3 files, 36 tests (35 pass, 1 ignored) | HIGH | ✅ |
 | macros/   | 0 | 0 | LOW | ❌ |
 | project/  | 0 (SBT config only) | 0 | LOW | ❌ |
 
@@ -19,6 +20,7 @@ Write-once neural network library for ZIO. Swap DJL ↔ DL4J by changing one JAR
 - **core/** — Framework-agnostic: `ModelDef`, `LayerDef`, `ActivationFn`, `LossFn`, `OptimizerDef`, DSL (`dsl.*`), `ConfigLoader`, `TokenizerConfig`, `EncodingResult`, `ImageTransformDef`, `ImagePipeline`
 - **djl/** — Deep Java Library backend: `ZModel` wrapping `ZooModel`, `Backend.compile` → DJL `Block`, `TensorOps` for NDArray math, `scope.withNDManager` for resource mgmt, `ZTokenizer` (HuggingFace), `ImageTransformer` (DJL CV)
 - **dl4j/** — DeepLearning4j backend: `ZModel` wrapping `MultiLayerNetwork`, `Backend.compile` → DL4J `MultiLayerNetwork`, `TensorOps` for INDArray math, `ZTokenizer` (regex/whitespace), `ImageTransformer` (ND4J)
+- **storch/** — PyTorch native backend via JavaCPP: `ZModel` wrapping storch `TensorModule`, `Backend.compile` → storch module, `TensorOps` for native PyTorch tensor math, `ZTokenizer` (HuggingFace), `ImageTransformer` (DJL)
 
 All backends export into `zio.nn` via package objects. User code imports `zio.nn.*` and `zio.nn.dsl.*`.
 

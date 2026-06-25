@@ -85,9 +85,10 @@ CI=true sbt ci-release
 ```scala
 // build.sbt
 libraryDependencies ++= Seq(
-  "io.github.szekai" %% "zio-nn-core" % "<version>",
-  "io.github.szekai" %% "zio-nn-djl"  % "<version>",
-  // or "io.github.szekai" %% "zio-nn-dl4j" % "<version>"
+  "io.github.szekai" %% "zio-nn-core"  % "<version>",
+  "io.github.szekai" %% "zio-nn-djl"   % "<version>",
+  // or "io.github.szekai" %% "zio-nn-dl4j"  % "<version>"
+  // or "io.github.szekai" %% "zio-nn-storch" % "<version>"
 )
 ```
 

@@ -59,7 +59,7 @@ val block: ai.djl.nn.Block = Backend.compile(arch)
 val net: MultiLayerNetwork = Backend.compile(arch)
 ```
 
-Each layer type (`LSTM`, `Dense`, `Output`, etc.) has a corresponding implementation in both backends. The compiler iterates the layer list and builds the framework-native equivalent.
+Each layer type (`LSTM`, `Dense`, `Output`, etc.) has a corresponding implementation in all backends. The compiler iterates the layer list and builds the framework-native equivalent.
 
 ### 3. Wrap in ZModel
 
@@ -500,6 +500,68 @@ val psi = EvaluationMetrics.psi(expected, actual).get  // Double
 val psi2 = EvaluationMetrics.psi(expected, actual, numBins = 20, smoothing = 1e-8).get
 ```
 
+### Streaming Evaluation — DJL Dataset + Batch
+
+The existing `evaluate()` method (all backends) loads all data into memory via `predict()`. For datasets that don't fit in memory, DL4J and DJL take fundamentally different approaches:
+
+| Backend | Abstraction | Status |
+|---------|-------------|--------|
+| DL4J | `DataSetIterator` — iterates `DataSet` objects from disk or stream | Native, mature |
+| DJL | `Dataset` + `Batch` — `Dataset.getData(NDManager)` returns `Iterator<Batch>` | Prototype (see below) |
+
+**DL4J** has a rich `DataSetIterator` ecosystem: `RecordReaderDataSetIterator` for CSV/image files, `MultiDataSetIterator` for ComputationGraph, and custom iterators for any data source. The DL4J-side implementation uses `DataSet` objects directly — each `DataSet` wraps a features `INDArray` and labels `INDArray`, both backed by off-heap ND4J buffers.
+
+**DJL** has no `DataSetIterator` equivalent. Instead, it provides `ai.djl.training.dataset.Dataset` — an abstract class with a single method `getData(NDManager): Iterator<Batch>`. Each `Batch` wraps one or more `NDList` (features + labels) and carries metadata like batch size and progress.
+
+#### DJL approach (planned / prototype)
+
+The following extension method sketches how DJL-native streaming evaluation would work via `Dataset`:
+
+```scala
+// DJL backend — streaming evaluation via Dataset
+import ai.djl.training.dataset.{Dataset, Batch}
+import zio.nn.djl.zioApi.*
+
+extension (model: ZModel)
+  def evaluateDataset(
+    dataset: Dataset,
+    metrics: List[EvalMetric],
+    batchSize: Int = 32
+  ): Task[Map[String, Double]] = ZIO.attempt {
+    val evaluator = model.underlying.newEvaluator()
+    val manager   = model.underlying.getNDManager
+    val batches   = dataset.getData(manager)
+    batches.forEachRemaining { batch =>
+      evaluator.evaluateBatch(batch)
+      batch.close()   // ← CRITICAL: prevents OOM
+    }
+    evaluator.getMetrics
+  }
+```
+
+> **⚠️ Prototype status**: The code above is a conceptual sketch. DJL-native evaluation via `Dataset` is not yet available in the unified API. Track progress in [Issue #34](https://github.com/szekai/zio-nn/issues/34).
+
+#### Batch lifecycle (DJL)
+
+Each `Batch` from `Dataset.getData()` wraps native NDArrays backed by GPU or CPU memory. **Every batch must be closed** after processing — failing to do so leaks native memory and causes OOM errors:
+
+```scala
+batches.forEachRemaining { batch =>
+  // process batch (predict, compute loss, etc.)
+  batch.close()   // releases NDArrays immediately
+}
+```
+
+The `Batch` iterator is `Iterator[Batch]` where each element implements `AutoCloseable`. Use `forEachRemaining` or a while-loop with explicit `batch.close()`.
+
+For comparison, DL4J's `DataSetIterator` returns `DataSet` objects that *may* also require closing depending on the implementation (`DataSet` does not implement `AutoCloseable`, but some iterators recycle or pool `DataSet` instances). Always check the specific iterator's contract.
+
+#### Cross-reference
+
+- DL4J `DataSetIterator` guide: [DL4J DataSetIterator docs](https://deeplearning4j.konduit.ai/)
+- `DataSetLoader` (ZIO Stream abstraction): [Batch Data Loading](#batch-data-loading-datasetloader)
+- DJL `Dataset` API: [ai.djl.training.dataset.Dataset](https://javadoc.io/doc/ai.djl/api/latest/ai/djl/training/dataset/Dataset.html)
+
 ## Batch Data Loading: DataSetLoader
 
 ZIO Stream pipeline from files on disk → transform → batched arrays → model:
@@ -938,14 +1000,28 @@ Change one line in `build.sbt` — zero code changes:
 
 ## Choosing a Backend
 
-| | DJL | DL4J |
-|---|-----|------|
-| Engine | PyTorch 2.7.1 | JVM-native |
-| GPU | Auto-detect | Manual CUDA setup |
-| Distributed | No | Spark |
-| Python deps | libtorch (auto-downloaded) | None |
-| ONNX/TF/XGBoost | ✅ via engine param | No |
-| Best for | Cloud GPU, PyTorch ecosystem | On-prem, big data pipelines |
+| | DJL | DL4J | Storch |
+|---|-----|------|--------|
+| Engine | PyTorch 2.7.1 | JVM-native (ND4J) | PyTorch 2.7.1 via JavaCPP |
+| GPU | Auto-detect | Manual CUDA setup | Auto-detect |
+| Distributed | No | Spark | No |
+| Python deps | libtorch (auto-downloaded) | None | libtorch (via JavaCPP presets) |
+| ONNX/TF/XGBoost | ✅ via engine param | No | No |
+| Custom MHA forward | ✅ | ✅ | ✅ (Linear + F.scaled_dot_product_attention) |
+| LSTM forward | ✅ | ✅ | ✅ (via forward, not apply) |
+| save / load | ✅ | ✅ | ⚠️ (see Known Limitations below) |
+| Test coverage | 20 tests | 37 tests | 35 tests (1 ignored) |
+| Best for | Cloud GPU, PyTorch ecosystem | On-prem, big data pipelines | Native PyTorch from JVM |
+
+## Known Limitations (storch)
+
+The storch backend wraps bytedeco JavaCPP bindings for LibTorch. Some APIs are `private[torch]` or use Java serialization internally, which limits certain features:
+
+| Limitation | Cause | Workaround |
+|---|---|---|
+| `save` / `load` — state dict serialization fails | storch serializes `Map[String, Tensor]` via Java `ObjectOutputStream`; `torch.Float32Tensor` is not `Serializable` | Use DJL or DL4J backends for save/load. Native module serialization (`OutputArchive`/`InputArchive`) requires `nativeModule()` which is `private[torch]`. |
+| `LSTM.apply(Tensor)` — single-arg forward stubbed | storch's `nn.LSTM.apply(Tensor)` body is `Predef.???` (NotImplementedError) | Our wrappers call `lstm.forward(input, Some((h0, c0)))._1` directly — transparent to users of `ZModel` / `Backend.compile`. |
+| `MultiheadAttention` constructor — `checkcast Nothing$` bug | storch's codegen inserts a `checkcast Nothing$` after `DoublePointer.put()`, always throws `ClassCastException` | Our `MHAWrapper` uses `nn.Linear` + `F.scaled_dot_product_attention` instead. Completely transparent to users. |
 
 ## References
 

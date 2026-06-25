@@ -5,22 +5,24 @@
 **Write once, run on any JVM deep learning framework. Swap the JAR, not the code.**
 
 ```scala
-// Define architecture — same for both backends
+// Define architecture — same for all backends
 import zio.nn.dsl.*
 val arch = Sequential(7)(LSTM(64, Tanh), Dense(32, ReLU), Output(1, MSE)).build
 
-// Create model — same for both backends
-import zio.nn.dl4j.ZModel    // or zio.nn.djl.ZModel for DJL
-import zio.nn.dl4j.Backend   // or zio.nn.djl.Backend for DJL
+// Create model — same for all backends
+import zio.nn.dl4j.ZModel          // or zio.nn.djl.ZModel for DJL
+import zio.nn.dl4j.Backend         // or zio.nn.djl.Backend for DJL
+                                   // or zio.nn.storch.ZModel for storch
+                                   // or zio.nn.storch.Backend for storch
 val model = ZModel.create(arch, "my-model").get
 
-// Predict / Train — same for both backends
+// Predict / Train — same for all backends
 val predictions = model.predict(features).get      // Array[Array[Float]] → Array[Float]
 model.fit(features, labels, epochs = 50)             // returns FitResult(loss, epochs)
 model.close()
 ```
 
-**Swap DJL ↔ DL4J by changing one line in `build.sbt` — zero code changes.**
+**Swap DJL ↔ DL4J ↔ storch by changing one dependency in `build.sbt` — zero code changes.**
 
 📖 **[User Guide →](docs/USER_GUIDE.md)** — architecture, DSL reference, escape hatches, backend swap guide.
 
@@ -31,12 +33,13 @@ model.close()
 | `zio-nn-core` | DSL (`dsl.*`), types (`ModelDef`, `LayerDef`, `FitResult`), ConfigLoader, implicits |
 | `zio-nn-djl` | ZModel, Backend, zioApi, TensorOps, scope, implicits — PyTorch/ONNX/TF/XGBoost |
 | `zio-nn-dl4j` | ZModel, Backend, zioApi, TensorOps, implicits — JVM-native (no Python) |
+| `zio-nn-storch` | ZModel, Backend, zioApi, TensorOps, implicits — native PyTorch via JavaCPP |
 | `zio-nn-dl4j-embeddings` | Word2Vec training (`SequenceVectors + SkipGram`), pre-trained vector loading, embedding-to-LayerSpec bridge |
 | `zio-nn-vectordb` | Vector store abstraction (`VectorStore` trait), `InMemoryVectorStore`, `PgvectorStore`, ZIO wrappers, egress pipeline (`predictAndStoreFlow`) |
 
 ```scala
 // sbt — check latest release tag for version: https://github.com/szekai/zio-nn/releases
-libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "<version>"  // or zio-nn-dl4j
+libraryDependencies += "io.github.szekai" %% "zio-nn-djl" % "<version>"   // or zio-nn-dl4j, or zio-nn-storch
 ```
 
 ## Quick Start
@@ -117,7 +120,7 @@ val loaded = ZModel.load(Path.of("models/my-model"))
 | `Conv2D(32, (3,3))` | `LayerDef.Conv2D(nIn=auto, filters=32, kernel=(3,3), ReLU)` |
 | `MaxPool2D((2,2))` | `LayerDef.MaxPool2D(poolSize=(2,2))` |
 | `Flatten` | `LayerDef.Flatten` |
-| `GRU(64, Tanh)` | `AdvancedLayerDef.GRU(nIn=auto, nOut=64, Tanh)` (DJL only) |
+| `GRU(64, Tanh)` | `AdvancedLayerDef.GRU(nIn=auto, nOut=64, Tanh)` |
 | `BiDirectional(LSTM(64))` | `AdvancedLayerDef.BiDirectional(LSTM, nIn=auto, nOut=64, Tanh)` |
 | `MultiHeadAttention(300, 8)` | `AdvancedLayerDef.MultiHeadAttention(embeddingDim=300, numHeads=8)` |
 | `LayerNorm` | `LayerDef.LayerNorm(nIn=auto)` |
@@ -147,15 +150,15 @@ Sequential(7)(
 
 ## Feature Coverage Matrix
 
-### Unified API (same for both backends)
+### Unified API (same for all backends)
 
 | Operation | Signature | Notes |
 |-----------|-----------|-------|
 | Create | `ZModel.create(arch, name)` | Compiles + initializes internally |
 | Predict | `model.predict(features: Array[Array[Float]]): Try[Array[Float]]` | Internal NDList/INDArray conversion |
 | Fit | `model.fit(features, labels, epochs, lr)` | Internal dataset creation |
-| Save | `model.save(path)` | Framework-native format |
-| Load | `ZModel.load(path)` | Auto-detects engine |
+| Save | `model.save(path)` | Framework-native format. ⚠️ storch: limited (see [USER_GUIDE.md](docs/USER_GUIDE.md#known-limitations-storch)) |
+| Load | `ZModel.load(path)` | Auto-detects engine. ⚠️ storch: limited (see [USER_GUIDE.md](docs/USER_GUIDE.md#known-limitations-storch)) |
 | Close | `model.close()` | Releases native resources |
 | Tokenize | `tok.encode(text): Try[EncodingResult]` | Text → token IDs (see Tokenization section) |
 | Image Transform | `transformer.transform(bytes): Try[Array[Array[Float]]]` | Raw image → float array (see Image Preprocessing section) |
@@ -168,45 +171,54 @@ Sequential(7)(
 
 ### DSL Coverage (80% use case)
 
-| Feature | DJL | DL4J |
-|---------|-----|------|
-| LSTM (recurrent) | ✅ | ✅ |
-| Dense (fully-connected) | ✅ | ✅ |
-| Output (regression/classification) | ✅ | ✅ |
-| Batch Normalization | ✅ | ✅ |
-| Dropout | ⚠️ identity | ✅ |
-| Adam / SGD / RMSprop | ✅ | ✅ |
-| Sequential models | ✅ | ✅ |
-| Save / Load | ✅ | ✅ |
-| Embedding | ✅ | ✅ |
-| GRU | ✅ | ✅ |
-| BiDirectional (LSTM/GRU) | ✅ | ✅ |
-| MultiHeadAttention | ✅ | ✅ |
-| LayerNorm | ✅ (native) | ❌ (DL4J 1.0.0-M2.1 lacks LayerNorm) |
-| TransformerEncoder | ✅ (native block) | ❌ (use DJL or compose manually) |
+| Feature | DJL | DL4J | Storch |
+|---------|-----|------|--------|
+| LSTM (recurrent) | ✅ | ✅ | ✅ |
+| Dense (fully-connected) | ✅ | ✅ | ✅ |
+| Output (regression/classification) | ✅ | ✅ | ✅ |
+| Batch Normalization | ✅ | ✅ | ✅ |
+| Dropout | ⚠️ identity | ✅ | ✅ |
+| Adam / SGD / RMSprop | ✅ | ✅ | ✅ |
+| Sequential models | ✅ | ✅ | ✅ |
+| Save / Load | ✅ | ✅ | ⚠️ limited (see [docs](docs/USER_GUIDE.md#known-limitations-storch)) |
+| Embedding | ✅ | ✅ | ✅ |
+| GRU | ✅ | ✅ | ✅ |
+| BiDirectional (LSTM/GRU) | ✅ | ✅ | ✅ |
+| MultiHeadAttention | ✅ | ✅ | ✅ |
+| LayerNorm | ✅ (native) | ❌ (DL4J 1.0.0-M2.1 lacks LayerNorm) | ✅ |
+| TransformerEncoder | ✅ (native block) | ❌ (use DJL or compose manually) | ✅ |
 
 ### Tokenization
 
-| Feature | DJL | DL4J |
-|---------|-----|------|
-| HuggingFace tokenizer (auto-download) | ✅ | — |
-| Local `tokenizer.json` | ✅ | — |
-| Regex tokenizer | — | ✅ |
-| Whitespace tokenizer | — | ✅ |
-| Batch encode | ✅ | ✅ |
-| Decode (token IDs → text) | ✅ | ✅ |
-| Attention mask | ✅ | — |
-| Token type IDs | ✅ | — |
-| ZIO wrappers (`encodeZ`, `decodeZ`) | ✅ | ✅ |
+| Feature | DJL | DL4J | Storch |
+|---------|-----|------|--------|
+| HuggingFace tokenizer (auto-download) | ✅ | — | ✅ |
+| Local `tokenizer.json` | ✅ | — | — |
+| Regex tokenizer | — | ✅ | ✅ (word-level) |
+| Whitespace tokenizer | — | ✅ | — |
+| Batch encode | ✅ | ✅ | ✅ |
+| Decode (token IDs → text) | ✅ | ✅ | ✅ |
+| Attention mask | ✅ | — | — |
+| Token type IDs | ✅ | — | — |
+| ZIO wrappers (`encodeZ`, `decodeZ`) | ✅ | ✅ | ✅ |
 
 ### Image Preprocessing
 
-| Feature | DJL | DL4J |
-|---------|-----|------|
-| Resize | ✅ | ✅ |
-| Normalize (mean/std) | ✅ | ✅ |
-| CenterCrop | ✅ | ✅ |
-| Pipeline composition (chained transforms) | ✅ | ✅ |
+| Feature | DJL | DL4J | Storch |
+|---------|-----|------|--------|
+| Resize | ✅ | ✅ | ✅ |
+| Normalize (mean/std) | ✅ | ✅ | ✅ |
+| CenterCrop | ✅ | ✅ | ✅ |
+| Pipeline composition (chained transforms) | ✅ | ✅ | ✅ |
+
+### Batch / Streaming
+
+| Feature | DJL | DL4J | Storch |
+|---------|-----|------|--------|
+| In-memory `evaluate()` | ✅ (predict + metric compute) | ✅ (predict + metric compute) | ✅ |
+| Streaming eval via native iterator | ⚠️ planned (Dataset + Batch) | ✅ (DataSetIterator) | — |
+| `DataSetLoader` (ZIO Stream) | ✅ | ✅ | — |
+| `predictFlow` / `fitFlow` (ZIO Stream) | ✅ | ✅ | ✅ (via storch module) |
 
 ### GRU vs LSTM
 
@@ -249,22 +261,25 @@ graph TD
         B["LayerDef (LSTM, Dense, Output, BatchNorm, Dropout, Conv2D, MaxPool2D, Flatten, Embedding)<br/>+ AdvancedLayerDef (GRU, BiDirectional, MultiHeadAttention)<br/>AnyLayer → unified SequentialDef"]
     end
     subgraph "Backend Layer"
-        C["Backend.compile(ModelDef) → Block / MultiLayerNetwork<br/>ZModel wraps native model objects"]
+        C["Backend.compile(ModelDef) → TensorModule / Block / MultiLayerNetwork<br/>ZModel wraps native model objects"]
         D["djl"]
         E["dl4j"]
+        H["storch"]
     end
     subgraph "Embeddings Module"
         F["Word2Vec.train(), .load(), .similarity(), .wordsNearest()<br/>Word2VecModel → EmbeddingWeights → LayerSpec bridge"]
     end
     subgraph "Native Framework"
-        G["ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork (ND4J)"]
+        G["ai.djl.Model (PyTorch/ONNX/TF) | MultiLayerNetwork (ND4J) | LibTorch (JavaCPP)"]
     end
     A --> B
     B --> C
     C --> D
     C --> E
+    C --> H
     D --> G
     E --> G
+    H --> G
     F --> G
 ```
 
@@ -353,7 +368,7 @@ model.fit(features, labels, epochs = 50) match
 
 ## Multi-Input / FunctionalDef
 
-Both backends support `FunctionalDef` for multi-input, skip-connection, and DAG architectures:
+All backends support `FunctionalDef` for multi-input, skip-connection, and DAG architectures:
 
 ```scala
 val arch = FunctionalDef(
@@ -369,16 +384,16 @@ val arch = FunctionalDef(
 
 ---
 
-## Why Two Backends?
+## Why Three Backends?
 
-| | DJL | DL4J |
-|---|-----|------|
-| **Engine** | PyTorch 2.7.1 native | JVM-native (C++ ND4J) |
-| **Training** | GPU + CPU | GPU + CPU + Spark distributed |
-| **Python deps** | libtorch (auto-downloaded) | None |
-| **Best for** | Cloud GPU, PyTorch ecosystem | On-prem JVM, big data pipelines |
-| **Maintainer** | AWS (150 contributors) | Konduit (1 maintainer) |
-| **Releases** | Monthly (0.36.0) | ~3 years (1.0.0-M2.1) |
+| | DJL | DL4J | Storch |
+|---|-----|------|--------|
+| **Engine** | PyTorch 2.7.1 native | JVM-native (C++ ND4J) | PyTorch 2.7.1 via JavaCPP |
+| **Training** | GPU + CPU | GPU + CPU + Spark distributed | GPU + CPU |
+| **Python deps** | libtorch (auto-downloaded) | None | libtorch (via JavaCPP presets) |
+| **Best for** | Cloud GPU, PyTorch ecosystem | On-prem JVM, big data pipelines | Native PyTorch from JVM |
+| **Maintainer** | AWS (150 contributors) | Konduit (1 maintainer) | Mullerhai (storch) |
+| **Releases** | Monthly (0.36.0) | ~3 years (1.0.0-M2.1) | Active (0.7.6) |
 
 ---
 
@@ -485,7 +500,7 @@ val glove = Word2Vec.loadGloVe(Path.of("glove.6B.300d.txt")).get
 | `predictInt(tokens)` | DJL + DL4J | Predict from token-index input |
 | `fitInt(tokens, labels, epochs)` | DJL + DL4J | Train from token-index input |
 
-**DJL Note**: Both backends support embeddings natively. DJL uses `IdEmbedding` for integer-index embeddings.
+**DJL Note**: All backends support embeddings natively (storch via `nn.Embedding`, DJL via `IdEmbedding`).
 
 ## License
 
@@ -508,10 +523,10 @@ ZIO.scoped {
 
 ## Tensor Operations (v0.5.0)
 
-ZIO-wrapped tensor math for both backends — identical API, zero code change when swapping:
+ZIO-wrapped tensor math for all backends — identical API, zero code change when swapping:
 
 ```scala
-import zio.nn.TensorOps.*  // resolves to DL4J or DJL backend automatically
+import zio.nn.TensorOps.*  // resolves to backend automatically (DL4J, DJL, or storch)
 for
   a <- createDouble1D(Array(1.0, 2.0, 3.0))
   b <- createDouble1D(Array(0.5, 0.5, 0.5))
@@ -842,11 +857,12 @@ arch.flatMap(a => ZModel.create(a, "from-config"))
 
 ## Tokenization (v0.8.0)
 
-Convert text to token IDs for models with `Embedding` as the first layer. Two backends with different tokenizer strategies:
+Convert text to token IDs for models with `Embedding` as the first layer. Different tokenizer strategies per backend:
 
 ```scala
 import zio.nn.*
-import zio.nn.dl4j.ZTokenizer        // or zio.nn.djl.ZTokenizer for DJL
+import zio.nn.dl4j.ZTokenizer          // or zio.nn.djl.ZTokenizer for DJL
+import zio.nn.storch.ZTokenizer        // or zio.nn.storch.ZTokenizer for storch
 ```
 
 ### DJL — HuggingFace Tokenizers
@@ -958,7 +974,7 @@ tok.close()
 
 ## Image Preprocessing (v0.8.0)
 
-Transform raw image bytes into float arrays for vision model inputs. Both backends support composable pipelines:
+Transform raw image bytes into float arrays for vision model inputs. All backends support composable pipelines:
 
 ```scala
 import zio.nn.*
