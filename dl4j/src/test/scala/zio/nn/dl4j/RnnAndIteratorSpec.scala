@@ -95,7 +95,7 @@ object RnnAndIteratorSpec extends ZIOSpecDefault:
     test("rnnClearPreviousStateZ does not throw") {
       val arch = Sequential(4)(LSTM(8, Tanh), Output(1)).build
       zioApi.create(arch).flatMap { model =>
-        model.rnnClearPreviousStateZ().as(assertTrue(true))
+        model.rnnClearPreviousStateZ.as(assertTrue(true))
       }
     },
 
