@@ -39,7 +39,7 @@ object zioApi:
       ZIO.attemptBlocking(model.rnnTimeStep(input).get)
 
     /** Reset recurrent layer internal state for new independent sequence. */
-    def rnnClearPreviousStateZ: Task[Unit] =
+    def rnnClearPreviousStateZ(): Task[Unit] =
       ZIO.attemptBlocking(model.rnnClearPreviousState().get)
 
     def predictZ(features: Array[Array[Float]]): Task[Array[Float]] =
