@@ -164,6 +164,7 @@ Sequential(7)(
 | Image Transform | `transformer.transform(bytes): Try[Array[Array[Float]]]` | Raw image → float array (see Image Preprocessing section) |
 | Evaluate | `model.evaluate(features, labels, metrics): Try[Map[String, Double]]` | Accuracy, precision, recall, F1 built-in |
 | VectorStore | `store(record)`, `storeBatch(recs)`, `search(query, k)`, `delete(id)`, `deleteBatch(ids)` | Framework-agnostic, `ZIO.scoped` resource management |
+| ZVectorStore | `store`, `storeBatch`, `search`, `delete`, `deleteBatch` (all `Task[A]`) | ZIO-native trait, `ZLayer` lifecycle (`inMemory` / `pgvector`) |
 | Predict & Store | `model.predictAndStore(features, store, ids): Try[Array[Float]]` | Predict + store result as `VectorRecord` in a `VectorStore` |
 | predictAndStoreFlow | `ZPipeline[Any, Throwable, (Array[Array[Float]], Array[String]), Array[Float]]` | Streaming predict-and-store pipeline |
 | Activation apply/derivative | `ActivationFn.ReLU.apply(x)` / `.derivative(x)` | Pure computation, no backend needed |

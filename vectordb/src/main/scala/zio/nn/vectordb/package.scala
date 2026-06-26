@@ -7,16 +7,37 @@ import javax.sql.DataSource
 /** ZIO-friendly wrappers for [[VectorStore]] and vector DB resource management.
   *
   * Provides extension methods on [[VectorStore]] that wrap every Try-based
-  * operation in ZIO, plus managed resource creation for [[PgvectorStore]].
+  * operation in ZIO, plus managed resource creation for [[PgvectorStore]]
+  * and [[ZVectorStore]] for fully ZIO-native access.
   *
+  * == Quick comparison ==
+  *
+  * | Approach | Trait | Return type | Lifecycle |
+  * |----------|-------|-------------|-----------|
+  * | Try-based | [[VectorStore]] | `Try[A]` | manual `close()` |
+  * | Extension methods | `store.storeZ(...)` | `Task[A]` | manual `close()` |
+  * | ZIO-native | [[ZVectorStore]] | `Task[A]` | [[ZLayer]] (scoped) |
+  *
+  * === Extension methods (backward-compatible) ===
   * {{{
   *   import zio.nn.vectordb.*
   *
-  *   // ZIO wrappers on any VectorStore
-  *   myStore.storeZ(VectorRecord("a", Array(1f, 0f)))
-  *   myStore.searchZ(Array(1f, 0.1f), 3)
+  *   val store: VectorStore = ???
+  *   store.storeZ(VectorRecord("a", Array(1f, 0f)))    // Task[Unit]
+  *   store.searchZ(Array(1f, 0.1f), 3)                  // Task[Seq[VectorRecord]]
+  * }}}
   *
-  *   // Managed PgvectorStore
+  * === ZVectorStore via ZLayer ===
+  * {{{
+  *   // In-memory (testing / single-node)
+  *   val layer: ULayer[ZVectorStore] = ZVectorStore.inMemory
+  *
+  *   // Postgres + pgvector (production)
+  *   val layer: TaskLayer[ZVectorStore] = ZVectorStore.pgvector(dataSource, 768)
+  * }}}
+  *
+  * === Managed PgvectorStore (direct, without ZVectorStore) ===
+  * {{{
   *   ZIO.scoped {
   *     createPgvectorStore(ds).flatMap { store =>
   *       store.storeZ(record) *> store.searchZ(query, 5)
