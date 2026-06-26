@@ -79,20 +79,6 @@ class ZModel(val underlying: MultiLayerNetwork):
 
   def score(dataset: DataSet): Try[Double] = Try(underlying.score(dataset))
 
-  /** RNN: run a single time step while preserving hidden state between calls.
-    * Takes a 2D input of shape [batchSize, nIn] and returns 2D output of shape [batchSize, nOut].
-    * Subsequent calls continue from the previously preserved state.
-    * Call [[rnnClearPreviousState]] to reset the state to zeros.
-    */
-  def rnnTimeStep(input: INDArray): Try[INDArray] =
-    Try(underlying.rnnTimeStep(input))
-
-  /** RNN: clear the preserved hidden state.
-    * After this call, the next [[rnnTimeStep]] starts from zero state.
-    */
-  def rnnClearPreviousState(): Try[Unit] =
-    Try(underlying.rnnClearPreviousState())
-
   /** Train from a DataSetIterator for the specified number of epochs.
     * Resets the iterator between epochs if supported.
     * Score is computed as the average loss across all batches in the iterator.

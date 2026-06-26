@@ -122,6 +122,9 @@ lazy val examples = project
     )
   )
 
+lazy val isMac: Boolean =
+  sys.props.get("os.name").exists(_.toLowerCase.contains("mac"))
+
 // ── Storch backend: PyTorch via JavaCPP ─────────────────
 lazy val storch = project
   .in(file("storch"))
@@ -129,6 +132,7 @@ lazy val storch = project
   .settings(
     name := "zio-nn-storch",
     fork := true,
+    Test / skip := !isMac,  // native libs only available on macOS
     libraryDependencies ++= Seq(
       "io.github.mullerhai" % "storch_core_3"   % storchV,
       "org.bytedeco"        % "javacpp"         % javacppV classifier "macosx-arm64",
