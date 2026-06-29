@@ -109,6 +109,21 @@ lazy val vectordb = project
     )
   )
 
+// ── RAG: Retrieval-Augmented Generation pipeline ─────────
+lazy val rag = project
+  .in(file("rag"))
+  .dependsOn(core, vectordb)
+  .settings(
+    name := "zio-nn-rag",
+    libraryDependencies ++= Seq(
+      "dev.zio"            %% "zio"                    % zioV,
+      "dev.zio"            %% "zio-streams"            % zioV,
+      "dev.zio"            %% "zio-json"               % "0.7.3",
+      "dev.zio"            %% "zio-test"               % zioV % Test,
+      "dev.zio"            %% "zio-test-sbt"           % zioV % Test
+    )
+  )
+
 // ── Examples: end-to-end runnable apps ──────────────────
 lazy val examples = project
   .in(file("examples"))
@@ -148,7 +163,7 @@ lazy val storch = project
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(core, djl, dl4j, embeddings, vectordb, examples, storch)
+  .aggregate(core, djl, dl4j, embeddings, vectordb, rag, examples, storch)
   .settings(
     name := "zio-nn",
     publish / skip := true

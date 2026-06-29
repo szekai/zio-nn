@@ -36,6 +36,7 @@ model.close()
 | `zio-nn-storch` | ZModel, Backend, zioApi, TensorOps, implicits — native PyTorch via JavaCPP |
 | `zio-nn-dl4j-embeddings` | Word2Vec training (`SequenceVectors + SkipGram`), pre-trained vector loading, embedding-to-LayerSpec bridge |
 | `zio-nn-vectordb` | Vector store abstraction (`VectorStore` trait), `InMemoryVectorStore`, `PgvectorStore`, ZIO wrappers, egress pipeline (`predictAndStoreFlow`) |
+| `zio-nn-rag` | RAG pipeline — `Document`, `EmbeddingService`, `RAGService` (ingest/query/delete), `RAGAgentBridge` (LLM tool-call adapter) |
 
 ```scala
 // sbt — check latest release tag for version: https://github.com/szekai/zio-nn/releases
