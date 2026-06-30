@@ -48,19 +48,29 @@
   <script async defer src="https://buttons.github.io/buttons.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
-      // Auto-render $$...$$ and \(...\) math delimiters with KaTeX
+      // KaTeX auto-render: $$...$$, \[...\], and \(...\) delimiters
       if (typeof renderMathInElement === 'function') {
         renderMathInElement(document.body, {
           delimiters: [
             {left: '$$', right: '$$', display: true},
+            {left: '\\[', right: '\\]', display: true},
             {left: '\\(', right: '\\)', display: false}
           ],
           throwOnError: false
         });
       }
-      // Initialize mermaid diagrams
+      // Mermaid diagrams: Jekyll outputs <pre><code class="language-mermaid">,
+      // so convert to <div class="mermaid"> and then render explicitly
       if (typeof mermaid !== 'undefined') {
-        mermaid.initialize({startOnLoad: true, theme: 'default'});
+        mermaid.initialize({startOnLoad: false, theme: 'default'});
+        document.querySelectorAll('pre code.language-mermaid').forEach(function(block) {
+          var pre = block.parentElement;
+          var div = document.createElement('div');
+          div.className = 'mermaid';
+          div.textContent = block.textContent;
+          pre.parentElement.replaceChild(div, pre);
+        });
+        mermaid.run();
       }
     });
   </script>
