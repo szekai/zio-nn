@@ -507,39 +507,66 @@ The existing `evaluate()` method (all backends) loads all data into memory via `
 | Backend | Abstraction | Status |
 |---------|-------------|--------|
 | DL4J | `DataSetIterator` — iterates `DataSet` objects from disk or stream | Native, mature |
-| DJL | `Dataset` + `Batch` — `Dataset.getData(NDManager)` returns `Iterator<Batch>` | Prototype (see below) |
+| DJL | `Dataset` + `Batch` — `Dataset.getData(NDManager)` returns `Iterator<Batch>` | ✅ Dataset streaming (`fitDataset`, `evaluateDataset`) |
 
 **DL4J** has a rich `DataSetIterator` ecosystem: `RecordReaderDataSetIterator` for CSV/image files, `MultiDataSetIterator` for ComputationGraph, and custom iterators for any data source. The DL4J-side implementation uses `DataSet` objects directly — each `DataSet` wraps a features `INDArray` and labels `INDArray`, both backed by off-heap ND4J buffers.
 
 **DJL** has no `DataSetIterator` equivalent. Instead, it provides `ai.djl.training.dataset.Dataset` — an abstract class with a single method `getData(NDManager): Iterator<Batch>`. Each `Batch` wraps one or more `NDList` (features + labels) and carries metadata like batch size and progress.
 
-#### DJL approach (planned / prototype)
+#### DJL — Dataset streaming API (available)
 
-The following extension method sketches how DJL-native streaming evaluation would work via `Dataset`:
+The DJL backend provides `fitDataset` and `evaluateDataset` methods on `ZModel` for streaming training and evaluation:
 
 ```scala
-// DJL backend — streaming evaluation via Dataset
 import ai.djl.training.dataset.{Dataset, Batch}
-import zio.nn.djl.zioApi.*
+import zio.nn.*
+import zio.nn.djl.ZModel
 
-extension (model: ZModel)
-  def evaluateDataset(
-    dataset: Dataset,
-    metrics: List[EvalMetric],
-    batchSize: Int = 32
-  ): Task[Map[String, Double]] = ZIO.attempt {
-    val evaluator = model.underlying.newEvaluator()
-    val manager   = model.underlying.getNDManager
-    val batches   = dataset.getData(manager)
-    batches.forEachRemaining { batch =>
-      evaluator.evaluateBatch(batch)
-      batch.close()   // ← CRITICAL: prevents OOM
-    }
-    evaluator.getMetrics
-  }
+// Training with streaming Dataset
+val dataset: Dataset = ArrayDataset.builder()
+  .optData(arrayFeatures).optLabels(arrayLabels)
+  .setSampling(batchSize, false)     // shuffle = false
+  .build()
+
+val result: Try[FitResult] = model.fitDataset(dataset, epochs = 10, batchSize = 32)
+// FitResult(loss, epochs, lossHistory)
+
+// Evaluation with streaming Dataset — batch-by-batch, no full dataset in memory
+val metrics: Try[Map[String, Double]] = model.evaluateDataset(
+  dataset, batchSize = 32, List(EvalMetric.Accuracy, EvalMetric.F1())
+)
+// Map("accuracy" → 0.93, "f1(pos=1.0)" → 0.91)
 ```
 
-> **⚠️ Prototype status**: The code above is a conceptual sketch. DJL-native evaluation via `Dataset` is not yet available in the unified API. Track progress in [Issue #34](https://github.com/szekai/zio-nn/issues/34).
+ZIO variants for `ZIO.scoped` usage:
+
+```scala
+import zio.nn.djl.zioApi.*
+
+ZIO.scoped {
+  for
+    model  <- create(arch, "m")
+    result <- model.fitDatasetZ(dataset, epochs = 10, batchSize = 32)
+    // FitResult with per-epoch loss history
+  yield result
+}
+
+ZIO.scoped {
+  for
+    model    <- create(arch, "m")
+    metrics  <- model.evaluateDatasetZ(dataset, batchSize = 32, List(EvalMetric.Accuracy))
+  yield metrics
+}
+```
+
+**Internal behavior**: Each `Batch` from `Dataset.getData(NDManager)` is processed one at a time and closed immediately after processing. This keeps peak memory proportional to `batchSize×outputDim`, not the full dataset size.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `fitDataset` | `(Dataset, epochs, batchSize, lr?)` → `Try[FitResult]` | Streaming training, per-epoch loss history |
+| `fitDatasetZ` | `(Dataset, epochs, batchSize, lr?)` → `Task[FitResult]` | ZIO variant with `ZIO.attemptBlocking` |
+| `evaluateDataset` | `(Dataset, batchSize, metrics)` → `Try[Map[String, Double]]` | Streaming evaluation, auto-handles multiclass argmax |
+| `evaluateDatasetZ` | `(Dataset, batchSize, metrics)` → `Task[Map[String, Double]]` | ZIO variant with `ZIO.attemptBlocking` |
 
 #### Batch lifecycle (DJL)
 

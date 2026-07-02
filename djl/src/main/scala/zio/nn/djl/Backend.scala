@@ -7,6 +7,7 @@ import ai.djl.nn.recurrent.LSTM as DJLLSTM
 import ai.djl.nn.recurrent.GRU as DJLGRU
 import ai.djl.nn.norm.{BatchNorm as DJLBN, LayerNorm as DJLLayerNorm}
 import ai.djl.nn.transformer.{IdEmbedding, ScaledDotProductAttentionBlock, TransformerEncoderBlock}
+import ai.djl.Device
 import ai.djl.ndarray.{NDList, NDManager}
 import ai.djl.training.ParameterStore
 import scala.collection.mutable
@@ -17,9 +18,9 @@ import scala.collection.mutable
   */
 object Backend:
 
-  def compile(model: ModelDef): Block = model match
+  def compile(model: ModelDef, device: Device = Device.cpu()): Block = model match
     case ModelDef.Sequential(arch)  => compileSequential(arch)
-    case ModelDef.Functional(arch)  => compileFunctional(arch)
+    case ModelDef.Functional(arch)  => compileFunctional(arch, device)
 
   private def compileSequential(arch: SequentialDef): Block =
     val block = new SequentialBlock()
@@ -35,7 +36,7 @@ object Backend:
     * Handles: multi-input merge (concatenation), fan-out, skip connections.
     * Not supported: recurrent edges / cycles.
     */
-  private def compileFunctional(arch: FunctionalDef): Block =
+  private def compileFunctional(arch: FunctionalDef, device: Device = Device.cpu()): Block =
     val layerBlocks = arch.layers.map((name, layer) => name -> toDJLBlock(layer))
 
     // Build adjacency for topological sort (Kahn's algorithm)
@@ -80,7 +81,7 @@ object Backend:
       new java.util.function.Function[NDList, NDList] {
         def apply(inputs: NDList): NDList =
           val ndm = if ndmRef.get() == null then
-            val m = NDManager.newBaseManager()
+            val m = NDManager.newBaseManager(device)
             ndmRef.set(m); m
           else ndmRef.get()
 

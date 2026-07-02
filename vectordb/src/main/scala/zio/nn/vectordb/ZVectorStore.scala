@@ -86,16 +86,52 @@ object ZVectorStore:
 
   // ── ZLayer helpers ──────────────────────────────────────────────────────
 
-  /** [[ULayer]] backed by a fresh [[InMemoryVectorStore]].
+  /** [[ULayer]] backed by a fresh in-memory [[ZVectorStore]].
     *
-    * No cleanup is required — the in-memory store is garbage-collected.
+    * Unlike [[fromVectorStore]], this implementation manages its own
+    * [[scala.collection.concurrent.TrieMap]] internally and uses
+    * [[ZIO.succeed]] instead of [[ZIO.attemptBlocking]] — zero blocking
+    * overhead, no `.get` on [[scala.util.Try]].
+    *
+    * No cleanup is required — the store is garbage-collected.
     *
     * {{{
     *   val layer: ULayer[ZVectorStore] = ZVectorStore.inMemory
     * }}}
     */
   val inMemory: ULayer[ZVectorStore] =
-    ZLayer.succeed(fromVectorStore(InMemoryVectorStore()))
+    ZLayer.succeed:
+      new ZVectorStore:
+        private val records = scala.collection.concurrent.TrieMap[String, VectorRecord]()
+
+        def store(record: VectorRecord): Task[Unit] =
+          ZIO.succeed(records.put(record.id, record))
+
+        def storeBatch(recs: Seq[VectorRecord]): Task[Unit] =
+          ZIO.succeed(recs.foreach(r => records.put(r.id, r)))
+
+        def search(query: Array[Float], k: Int): Task[Seq[VectorRecord]] =
+          ZIO.succeed:
+            if records.isEmpty then Seq.empty
+            else
+              records.values.toSeq
+                .map(r => (r, cosineDistance(query, r.values)))
+                .sortBy(_._2)
+                .take(k)
+                .map(_._1)
+
+        def delete(id: String): Task[Unit] =
+          ZIO.succeed(records.remove(id))
+
+        def deleteBatch(ids: Seq[String]): Task[Unit] =
+          ZIO.succeed(ids.foreach(records.remove))
+
+        private def cosineDistance(a: Array[Float], b: Array[Float]): Double =
+          val dot = a.zip(b).map { case (x, y) => x * y }.sum
+          val na  = math.sqrt(a.map(x => x * x).sum)
+          val nb  = math.sqrt(b.map(x => x * x).sum)
+          if na == 0 || nb == 0 then Double.MaxValue
+          else 1.0 - (dot / (na * nb))
 
   /** [[ZLayer]] backed by [[PgvectorStore]] with managed lifecycle.
     *

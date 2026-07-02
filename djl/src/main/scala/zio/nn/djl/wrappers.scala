@@ -20,14 +20,14 @@ import scala.util.Try
 // ═══════════════════════════════════════════════
 //  ZModel — unified API across backends
 // ═══════════════════════════════════════════════
-class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef: OptimizerDef = OptimizerDef.Adam()):
+class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef: OptimizerDef = OptimizerDef.Adam(), device: Device = Device.cpu()):
 
   /** UNIFIED: predict from float arrays. Works identically on both backends. */
   def predict(features: Array[Array[Float]]): Try[Array[Float]] =
     val sub = ndm.newSubManager()
     try
       val input = new NDList(sub.create(features))
-      val pred  = Predictor(underlying, new NoopTranslator(), Device.cpu(), false)
+      val pred  = Predictor(underlying, new NoopTranslator(), device, false)
       try
         val result = pred.predict(input)
         val arr = new Array[Float](result.head().size().toInt)
@@ -231,13 +231,13 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
 
   /** ESCAPE HATCH: raw DJL prediction with NDList. */
   def predictRaw(input: NDList): Try[NDList] = Try {
-    val pred = Predictor(underlying, new NoopTranslator(), Device.cpu(), false)
+    val pred = Predictor(underlying, new NoopTranslator(), device, false)
     try pred.predict(input) finally pred.close()
   }
 
   /** ESCAPE HATCH: create a DJL Predictor for multi-step inference. */
   def predictorRaw(): ZPredictor =
-    ZPredictor(Predictor(underlying, new NoopTranslator(), Device.cpu(), false), ndm.newSubManager())
+    ZPredictor(Predictor(underlying, new NoopTranslator(), device, false), ndm.newSubManager())
 
   /** ESCAPE HATCH: create a DJL Trainer for custom training loops. */
   def trainerRaw(config: DefaultTrainingConfig): ZTrainer =
@@ -252,7 +252,7 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
     try
       val flatTokens = tokens.flatten.map(_.toLong)
       val input = new NDList(sub.create(flatTokens, new Shape(tokens.length.toLong, tokens.head.length.toLong)))
-      val pred = Predictor(underlying, new NoopTranslator(), Device.cpu(), false)
+      val pred = Predictor(underlying, new NoopTranslator(), device, false)
       try
         val result = pred.predict(input)
         val head = result.head()
@@ -347,9 +347,9 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
 object ZModel:
 
   /** UNIFIED: create a model from architecture. Compiles + instantiates internally. */
-  def create(arch: ModelDef, name: String = "model", engine: String = "PyTorch"): Try[ZModel] = Try {
-    val block = Backend.compile(arch)
-    val ndm = NDManager.newBaseManager()
+  def create(arch: ModelDef, name: String = "model", engine: String = "PyTorch", device: Device = Device.cpu()): Try[ZModel] = Try {
+    val block = Backend.compile(arch, device)
+    val ndm = NDManager.newBaseManager(device)
     val m = Model.newInstance(name, ndm.getDevice(), engine)
     m.setBlock(block)
     val lossFn = extractLoss(arch)
@@ -362,7 +362,7 @@ object ZModel:
     val config = new DefaultTrainingConfig(Loss.l2Loss())
     val trainer = m.newTrainer(config)
     try trainer.initialize(new Shape(1, inputSize)) finally trainer.close()
-    ZModel(m, ndm, lossFn, optimizer)
+    ZModel(m, ndm, lossFn, optimizer, device)
   }
 
   private def extractLoss(arch: ModelDef): LossFn = arch match
@@ -371,11 +371,11 @@ object ZModel:
     case ModelDef.Functional(f) =>
       f.layers.collectFirst { case (_, LayerDef.Output(_, _, loss, _)) => loss }.getOrElse(LossFn.MSE)
 
-  def load(path: Path, name: String = "model", engine: String = "PyTorch"): Try[ZModel] = Try {
-    val ndm = NDManager.newBaseManager()
+  def load(path: Path, name: String = "model", engine: String = "PyTorch", device: Device = Device.cpu()): Try[ZModel] = Try {
+    val ndm = NDManager.newBaseManager(device)
     val m = Model.newInstance(name, ndm.getDevice(), engine)
     m.load(path, name)
-    ZModel(m, ndm, LossFn.MSE)
+    ZModel(m, ndm, LossFn.MSE, device = device)
   }
 
   /** Load an ONNX model. Convenience method that defaults engine to "OnnxRuntime". */

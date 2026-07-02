@@ -218,7 +218,7 @@ Sequential(7)(
 | Feature | DJL | DL4J | Storch |
 |---------|-----|------|--------|
 | In-memory `evaluate()` | ✅ (predict + metric compute) | ✅ (predict + metric compute) | ✅ |
-| Streaming eval via native iterator | ⚠️ planned (Dataset + Batch) | ✅ (DataSetIterator) | — |
+| Streaming eval via native iterator | ✅ Dataset streaming (`fitDataset`, `evaluateDataset`) | ✅ (DataSetIterator) | — |
 | `DataSetLoader` (ZIO Stream) | ✅ | ✅ | — |
 | `predictFlow` / `fitFlow` (ZIO Stream) | ✅ | ✅ | ✅ (via storch module) |
 
