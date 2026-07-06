@@ -37,6 +37,30 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       finally pred.close()
     finally sub.close()
 
+  /** LSTM-aware predict: reshapes 2D (window, featsPerBar) to 3D (1, window, featsPerBar)
+    * with NTC layout. DJL's RecurrentBlock.forward() rejects Unknown layout — this overload
+    * creates the NDArray with an explicit NTC Shape so layout metadata is preserved.
+    *
+    * @param features     2D array of shape (windowSize, featsPerBar)
+    * @param lstmWindow   number of time steps (window size)
+    * @param lstmFeatures number of features per time step
+    */
+  def predict(features: Array[Array[Float]], lstmWindow: Int, lstmFeatures: Int): Try[Array[Float]] =
+    val sub = ndm.newSubManager()
+    try
+      val flat = features.flatten
+      val shaped = new Shape(Array(1L, lstmWindow.toLong, lstmFeatures.toLong), "NTC")
+      val input = new NDList(sub.create(flat, shaped))
+      val pred  = Predictor(underlying, new NoopTranslator(), device, false)
+      try
+        val result = pred.predict(input)
+        val arr = new Array[Float](result.head().size().toInt)
+        val src = result.head().toFloatArray
+        System.arraycopy(src, 0, arr, 0, arr.length)
+        Try(arr)
+      finally pred.close()
+    finally sub.close()
+
   /** UNIFIED: train from float arrays. Works identically on both backends. */
   def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
     Try {
