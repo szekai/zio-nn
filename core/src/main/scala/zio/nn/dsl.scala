@@ -78,6 +78,12 @@ object dsl:
   def TransformerEncoder(dim: Int, numHeads: Int, ffDim: Int, numLayers: Int = 1, dropout: Double = 0.1): LayerSpec =
     LayerSpec.TransformerEncoder(dim, numHeads, ffDim, numLayers, dropout)
 
+  /** Extract last timestep from a sequence output — use after LSTM/GRU.
+    * Converts (batch, seqLen, features) → (batch, features).
+    * No parameters, no dropout — pure tensor slice.
+    */
+  val LastTimestep: LayerSpec = LayerSpec.LastTimestep
+
   // ═══ Activation / Loss / Optimizer shortcuts ═══
   val Tanh    = ActivationFn.Tanh
   val ReLU    = ActivationFn.ReLU
@@ -110,6 +116,7 @@ object dsl:
     case MultiHeadAttention(embeddingDim: Int, numHeads: Int, dropout: Double)
     case LayerNorm
     case TransformerEncoder(dim: Int, numHeads: Int, ffDim: Int, numLayers: Int, dropout: Double)
+    case LastTimestep
 
     def resolve(nIn: Int): AnyLayer = this match
       case LayerSpec.LSTM(nOut, act, drop) => AnyLayer.Standard(LayerDef.LSTM(nIn, nOut, act, drop))
@@ -135,6 +142,8 @@ object dsl:
         AnyLayer.Standard(LayerDef.LayerNorm(nIn))
       case LayerSpec.TransformerEncoder(dim, numHeads, ffDim, numLayers, dropout) =>
         AnyLayer.Advanced(AdvancedLayerDef.TransformerEncoder(dim, numHeads, ffDim, numLayers, dropout))
+      case LayerSpec.LastTimestep =>
+        AnyLayer.Standard(LayerDef.LastTimestep)
 
     def outputSize: Int = this match
       case LayerSpec.LSTM(nOut, _, _)   => nOut
@@ -151,6 +160,7 @@ object dsl:
       case LayerSpec.MultiHeadAttention(embeddingDim, _, _) => embeddingDim
       case LayerSpec.LayerNorm          => -1
       case LayerSpec.TransformerEncoder(dim, _, _, _, _) => dim
+      case LayerSpec.LastTimestep      => -1
 
   // ═══ Sequential builder ═══
 

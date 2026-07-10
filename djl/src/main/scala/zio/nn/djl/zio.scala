@@ -100,6 +100,56 @@ object zioApi:
     def fitDatasetZ(dataset: Dataset, epochs: Int, batchSize: Int, lr: Float = 0.001f): Task[FitResult] =
       ZIO.attemptBlocking(model.fitDataset(dataset, epochs, batchSize, lr).get)
 
+    /** Train an RNN with 3D NTC shape (ZIO version).
+      *
+      * ZIO-ified version of [[zio.nn.djl.wrappers.ZModel.fitDataset3D(dataset, epochs, batchSize, timeSteps, featuresPerBar, lr)]].
+      *
+      * @param dataset
+      *   A DJL `Dataset` whose data carries NTC layout.
+      * @param epochs
+      *   Number of training epochs.
+      * @param batchSize
+      *   Samples per batch.
+      * @param timeSteps
+      *   Window length (T in NTC).
+      * @param featuresPerBar
+      *   Features per time step (C in NTC).
+      * @param lr
+      *   Learning rate.
+      * @return
+      *   `Task[FitResult]` with loss after the final epoch.
+      *
+      * @example {{{
+      *   result <- model.fitDataset3DZ(dataset, epochs = 10, batchSize = 32, timeSteps = 20, featuresPerBar = 7)
+      * }}}
+      */
+    def fitDataset3DZ(dataset: Dataset, epochs: Int, batchSize: Int, timeSteps: Int, featuresPerBar: Int, lr: Float = 0.001f): Task[FitResult] =
+      ZIO.attemptBlocking(model.fitDataset3D(dataset, epochs, batchSize, timeSteps, featuresPerBar, lr).get)
+
+    /** Train an RNN from raw 3D arrays, bypassing ArrayDataset (ZIO version).
+      *
+      * ZIO-ified version of [[zio.nn.djl.wrappers.ZModel.fitArray3D(features, labels, epochs, batchSize, lr)]].
+      *
+      * @param features
+      *   3D array of shape (numSamples, timeSteps, featuresPerBar).
+      * @param labels
+      *   1D array of shape (numSamples).
+      * @param epochs
+      *   Number of training epochs.
+      * @param batchSize
+      *   Samples per batch.
+      * @param lr
+      *   Learning rate.
+      * @return
+      *   `Task[FitResult]` with loss after the final epoch.
+      *
+      * @example {{{
+      *   result <- model.fitArray3DZ(features, labels, epochs = 10, batchSize = 32)
+      * }}}
+      */
+    def fitArray3DZ(features: Array[Array[Array[Float]]], labels: Array[Float], epochs: Int, batchSize: Int, lr: Float = 0.001f): Task[FitResult] =
+      ZIO.attemptBlocking(model.fitArray3D(features, labels, epochs, batchSize, lr).get)
+
     /** Evaluate using a DJL Dataset (streaming batches).
       *
       * ZIO-ified version of [[zio.nn.djl.wrappers.ZModel.evaluateDataset(dataset, batchSize, metrics)]].

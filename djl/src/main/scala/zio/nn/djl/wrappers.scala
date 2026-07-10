@@ -195,6 +195,105 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       finally trainer.close()
     }
 
+  /** Train an RNN (LSTM/GRU) using a DJL Dataset with 3D NTC shape.
+    *
+    * Same as [[fitDataset]] but initialises the Trainer with a 3D Shape
+    * `(batchSize, timeSteps, featuresPerBar)` and the `"NTC"` layout that
+    * DJL's `RecurrentBlock` (LSTM/GRU) requires.
+    *
+    * @param dataset
+    *   A DJL `Dataset` whose data arrays carry the NTC layout.
+    * @param epochs
+    *   Number of training epochs.
+    * @param batchSize
+    *   Samples per batch.
+    * @param timeSteps
+    *   Window / sequence length (T in NTC).
+    * @param featuresPerBar
+    *   Features per time step (C in NTC).
+    * @param lr
+    *   Learning rate.
+    * @return
+    *   `Try[FitResult]` with loss after the final epoch.
+    */
+  def fitDataset3D(dataset: Dataset, epochs: Int, batchSize: Int, timeSteps: Int, featuresPerBar: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
+    Try {
+      val opt = selectOptimizer(lr)
+      val config = new DefaultTrainingConfig(selectLoss(lossFn))
+      config.optOptimizer(opt)
+      config.optInitializer(new XavierInitializer(), "weight")
+      val trainer = underlying.newTrainer(config)
+      try
+        trainer.initialize(new Shape(Array(batchSize.toLong, timeSteps.toLong, featuresPerBar.toLong), "NTC"))
+        val lossHistory = scala.collection.mutable.ListBuffer[Double]()
+        for _ <- 1 to epochs do
+          val dataIter = dataset.getData(ndm)
+          dataIter.forEach { batch =>
+            try
+              ai.djl.training.EasyTrain.trainBatch(trainer, batch)
+            finally batch.close()
+          }
+          lossHistory += trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(lossHistory.lastOption.getOrElse(Double.NaN), epochs, lossHistory.toList)
+      finally trainer.close()
+    }
+
+  /** Train an RNN (LSTM/GRU) from raw 3D arrays, bypassing ArrayDataset.
+    *
+    * Creates NDArrays directly with NTC layout on the model's own NDManager,
+    * then iterates mini-batches manually. This avoids the cross-manager copy
+    * issue in ArrayDataset.getData() that can strip NTC layout metadata.
+    *
+    * @param features
+    *   3D array of shape (numSamples, timeSteps, featuresPerBar).
+    * @param labels
+    *   1D array of shape (numSamples).
+    * @param epochs
+    *   Number of training epochs.
+    * @param batchSize
+    *   Samples per batch.
+    * @param lr
+    *   Learning rate.
+    * @return
+    *   `Try[FitResult]` with loss after the final epoch.
+    */
+  def fitArray3D(features: Array[Array[Array[Float]]], labels: Array[Float], epochs: Int, batchSize: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
+    Try {
+      val numSamples = features.length
+      val timeSteps = features.head.length
+      val featuresPerBar = features.head.head.length
+      val opt = selectOptimizer(lr)
+      val config = new DefaultTrainingConfig(selectLoss(lossFn))
+      config.optOptimizer(opt)
+      config.optInitializer(new XavierInitializer(), "weight")
+      val trainer = underlying.newTrainer(config)
+      try
+        trainer.initialize(new Shape(Array(batchSize.toLong, timeSteps.toLong, featuresPerBar.toLong), "NTC"))
+        val lossHistory = scala.collection.mutable.ListBuffer[Double]()
+        for _ <- 1 to epochs do
+          var offset = 0
+          while offset < numSamples do
+            val currentBatchSize = math.min(batchSize, numSamples - offset)
+            val batchFeatures = features.slice(offset, offset + currentBatchSize)
+            val batchLabels = labels.slice(offset, offset + currentBatchSize)
+            val flat = batchFeatures.flatten.flatten
+            val dataShape = new Shape(Array(currentBatchSize.toLong, timeSteps.toLong, featuresPerBar.toLong), "NTC")
+            val dataArr = ndm.create(flat, dataShape)
+            val labelArr = ndm.create(batchLabels.map(Array(_)))
+            val batch = new ai.djl.training.dataset.Batch(
+              ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
+              currentBatchSize, null, null, currentBatchSize.toLong, 0L,
+              java.util.Collections.emptyList[Any]()
+            )
+            try
+              EasyTrain.trainBatch(trainer, batch)
+            finally batch.close()
+            offset += currentBatchSize
+          lossHistory += trainer.getTrainingResult.getTrainLoss.toDouble
+        FitResult(lossHistory.lastOption.getOrElse(Double.NaN), epochs, lossHistory.toList)
+      finally trainer.close()
+    }
+
   /** Evaluate using a DJL Dataset (streaming from disk or source).
     *
     * Iterates all batches, accumulates predictions and labels, then computes

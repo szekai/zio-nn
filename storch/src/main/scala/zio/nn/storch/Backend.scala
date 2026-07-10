@@ -80,6 +80,13 @@ object Backend:
     case LayerDef.LayerNorm(nIn) =>
       List(nn.LayerNorm[Float32](nIn))
 
+    case LayerDef.LastTimestep =>
+      List(new TensorModule[Float32]:
+        def apply(input: Tensor[Float32]): Tensor[Float32] =
+          // input: (batch, seqLen, features) → narrow to last step → squeeze → (batch, features)
+          input.narrow(1, input.size(1) - 1, 1).squeeze(1)
+      )
+
   private def toStorchAdvanced(adv: AdvancedLayerDef): List[TensorModule[Float32]] = adv match
 
     case AdvancedLayerDef.GRU(nIn, nOut, _, dropout) =>

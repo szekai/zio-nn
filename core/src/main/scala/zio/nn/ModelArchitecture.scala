@@ -41,6 +41,12 @@ enum LayerDef:
     */
   case LayerNorm(nIn: Int)
 
+  /** Extracts the last timestep from a sequence output (e.g., LSTM/GRU).
+    * Transforms shape (batch, seqLen, features) → (batch, features).
+    * Must follow a recurrent layer — no parameters, pure reshape.
+    */
+  case LastTimestep
+
   /** Maps discrete token IDs to dense vector representations.
     * When used as first layer, model input is `Array[Array[Int]]` (token indices).
     * Set `pretrained = Some(EmbeddingWeights(...))` to initialize from pre-trained vectors.

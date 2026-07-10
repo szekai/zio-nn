@@ -9,6 +9,7 @@ import ai.djl.nn.norm.{BatchNorm as DJLBN, LayerNorm as DJLLayerNorm}
 import ai.djl.nn.transformer.{IdEmbedding, ScaledDotProductAttentionBlock, TransformerEncoderBlock}
 import ai.djl.Device
 import ai.djl.ndarray.{NDList, NDManager}
+import ai.djl.ndarray.index.NDIndex
 import ai.djl.training.ParameterStore
 import scala.collection.mutable
 
@@ -117,7 +118,7 @@ object Backend:
 
   private def toDJLBlock(layer: LayerDef): Block = layer match
     case LayerDef.LSTM(nIn, nOut, act, dropout) =>
-      DJLLSTM.builder().setNumLayers(1).setStateSize(nOut).optDropRate(dropout.toFloat).build()
+      DJLLSTM.builder().setNumLayers(1).setStateSize(nOut).optDropRate(dropout.toFloat).optBatchFirst(true).build()
 
     case LayerDef.Dense(nIn, nOut, act) =>
       val dense = Linear.builder().setUnits(nOut.toLong).build()
@@ -156,6 +157,17 @@ object Backend:
         .setEmbeddingSize(embeddingDim)
         .build()
 
+    case LayerDef.LastTimestep =>
+      new LambdaBlock(new java.util.function.Function[NDList, NDList] {
+        def apply(input: NDList): NDList =
+          val nd = input.singletonOrThrow()
+          // nd shape: (batch, seqLen, features)
+          // Extract last timestep → (batch, features)
+          val seqLen = nd.getShape().get(1)
+          val last = nd.get(s":, ${seqLen - 1}, :")
+          new NDList(last)
+      })
+
   private def toDJLActivationBlock(act: ActivationFn): Block = act match
     case ActivationFn.Tanh      => DJLActivation.tanhBlock()
     case ActivationFn.ReLU      => DJLActivation.reluBlock()
@@ -167,15 +179,15 @@ object Backend:
   private def toDJLAdvancedLayer(adv: AdvancedLayerDef): Block = adv match
     case AdvancedLayerDef.GRU(_, nOut, _, dropout) =>
       DJLGRU.builder().setNumLayers(1).setStateSize(nOut)
-        .optDropRate(dropout.toFloat).build()
+        .optDropRate(dropout.toFloat).optBatchFirst(true).build()
     case AdvancedLayerDef.BiDirectional(kind, _, nOut, _, dropout) =>
       kind match
         case BidirectionalKind.LSTM =>
           DJLLSTM.builder().setNumLayers(1).setStateSize(nOut)
-            .optDropRate(dropout.toFloat).optBidirectional(true).build()
+            .optDropRate(dropout.toFloat).optBidirectional(true).optBatchFirst(true).build()
         case BidirectionalKind.GRU =>
           DJLGRU.builder().setNumLayers(1).setStateSize(nOut)
-            .optDropRate(dropout.toFloat).optBidirectional(true).build()
+            .optDropRate(dropout.toFloat).optBidirectional(true).optBatchFirst(true).build()
     case AdvancedLayerDef.MultiHeadAttention(embeddingDim, numHeads, dropout) =>
       ScaledDotProductAttentionBlock.builder()
         .setEmbeddingSize(embeddingDim)
