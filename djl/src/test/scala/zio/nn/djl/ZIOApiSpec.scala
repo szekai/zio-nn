@@ -16,6 +16,20 @@ object ZIOApiSpec extends ZIOSpecDefault:
         _     <- ZIO.attemptBlocking(model.close()).orDie
       yield assertTrue(true)
     },
+    test("create succeeds for LSTM (recurrent) architecture") {
+      val arch = Sequential(7)(LSTM(64), Output(1)).build
+      for
+        model <- zioApi.create(arch)
+        _     <- ZIO.attemptBlocking(model.close()).orDie
+      yield assertTrue(true)
+    },
+    test("create succeeds for GRU (recurrent) architecture") {
+      val arch = Sequential(7)(GRU(64), Output(1)).build
+      for
+        model <- zioApi.create(arch)
+        _     <- ZIO.attemptBlocking(model.close()).orDie
+      yield assertTrue(true)
+    },
     test("fitWithCheckpoints returns real epoch count across partial chunks") {
       val arch = Sequential(7)(Dense(5), Output(1)).build
       zioApi.create(arch).flatMap { model =>

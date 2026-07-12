@@ -5,6 +5,7 @@ import ai.djl.{Model, Device}
 import ai.djl.ndarray.{NDList, NDManager, NDArray}
 import ai.djl.ndarray.types.Shape
 import ai.djl.nn.Block
+import ai.djl.nn.recurrent.RecurrentBlock
 import ai.djl.inference.Predictor
 import ai.djl.translate.{Translator, NoopTranslator}
 import ai.djl.training.{Trainer, DefaultTrainingConfig, EasyTrain, TrainingResult}
@@ -64,6 +65,8 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
   /** UNIFIED: train from float arrays. Works identically on both backends. */
   def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
     Try {
+      if blockIsRecurrent then throw new IllegalArgumentException(
+        "fit() does not support recurrent layers (LSTM/GRU). Use fitArray3D() instead.")
       val opt = selectOptimizer(lr)
       val config = new DefaultTrainingConfig(selectLoss(lossFn))
       config.optOptimizer(opt)
@@ -84,6 +87,8 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
 
   def fit(features: Array[Array[Float]], labels: Array[Array[Float]], epochs: Int, lr: Float): Try[FitResult] =
     Try {
+      if blockIsRecurrent then throw new IllegalArgumentException(
+        "fit() does not support recurrent layers (LSTM/GRU). Use fitArray3D() instead.")
       val opt = selectOptimizer(lr)
       val config = new DefaultTrainingConfig(selectLoss(lossFn))
       config.optOptimizer(opt)
@@ -114,6 +119,8 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
       try
+        if blockIsRecurrent then throw new IllegalArgumentException(
+          "fit() does not support recurrent layers (LSTM/GRU). Use fitArray3D() instead.")
         trainer.initialize(new Shape(1, features.head.length.toLong))
         val lossHistory = scala.collection.mutable.ListBuffer[Double]()
         for _ <- 1 to epochs do
@@ -178,6 +185,8 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       config.optInitializer(new XavierInitializer(), "weight")
       val trainer = underlying.newTrainer(config)
       try
+        if blockIsRecurrent then throw new IllegalArgumentException(
+          "fitDataset() does not support recurrent layers (LSTM/GRU). Use fitDataset3D() instead.")
         val inputSize = Option(underlying.getBlock.getInputShapes)
           .flatMap(a => if a.isEmpty then None else Some(a.head.get(0)))
           .getOrElse(1L)
@@ -467,6 +476,20 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       idx += 1
     sb.toString
 
+  /** Returns true if the underlying model block (or any of its children) is a recurrent layer (LSTM/GRU). */
+  private def blockIsRecurrent: Boolean =
+    def scan(b: Block): Boolean =
+      b.isInstanceOf[RecurrentBlock] || {
+        val children = b.getChildren
+        children != null && !children.isEmpty && {
+          val it = children.values().iterator()
+          var found = false
+          while it.hasNext && !found do found = scan(it.next())
+          found
+        }
+      }
+    scan(underlying.getBlock)
+
 object ZModel:
 
   /** UNIFIED: create a model from architecture. Compiles + instantiates internally. */
@@ -484,9 +507,25 @@ object ZModel:
       case _ => 1
     val config = new DefaultTrainingConfig(Loss.l2Loss())
     val trainer = m.newTrainer(config)
-    try trainer.initialize(new Shape(1, inputSize)) finally trainer.close()
+    try
+      // Skip weight-initialization warm-up for recurrent (LSTM/GRU) architectures.
+      // RecurrentBlock requires 3D NTC input shapes, and the correct time dimension
+      // is only known at train/predict time — the block will be lazily initialized
+      // on the first forward pass with the actual data shape.
+      if !isRecurrentArch(arch) then trainer.initialize(new Shape(1, inputSize))
+    finally trainer.close()
     ZModel(m, ndm, lossFn, optimizer, device)
   }
+
+  private def isRecurrentLayer(layer: AnyLayer): Boolean = layer match
+    case AnyLayer.Standard(LayerDef.LSTM(_, _, _, _))              => true
+    case AnyLayer.Advanced(AdvancedLayerDef.GRU(_, _, _, _))       => true
+    case AnyLayer.Advanced(AdvancedLayerDef.BiDirectional(_, _, _, _, _)) => true
+    case _                                                         => false
+
+  private def isRecurrentArch(arch: ModelDef): Boolean = arch match
+    case ModelDef.Sequential(s) => s.layers.exists(isRecurrentLayer)
+    case ModelDef.Functional(_) => false
 
   private def extractLoss(arch: ModelDef): LossFn = arch match
     case ModelDef.Sequential(s) =>
