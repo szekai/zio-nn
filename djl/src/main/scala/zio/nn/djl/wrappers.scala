@@ -288,7 +288,12 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
             val flat = batchFeatures.flatten.flatten
             val dataShape = new Shape(Array(currentBatchSize.toLong, timeSteps.toLong, featuresPerBar.toLong), "NTC")
             val dataArr = ndm.create(flat, dataShape)
-            val labelArr = ndm.create(batchLabels.map(Array(_)))
+            // Replicate labels across timeSteps so loss matches RNN time-distributed output.
+            val replicatedLabels = new Array[Float](currentBatchSize * timeSteps)
+            for i <- 0 until currentBatchSize; t <- 0 until timeSteps do
+              replicatedLabels(i * timeSteps + t) = batchLabels(i)
+            val labelShape = new Shape(Array(currentBatchSize.toLong, timeSteps.toLong, 1L), "NTC")
+            val labelArr = ndm.create(replicatedLabels, labelShape)
             val batch = new ai.djl.training.dataset.Batch(
               ndm.newSubManager(), new NDList(dataArr), new NDList(labelArr),
               currentBatchSize, null, null, currentBatchSize.toLong, 0L,
