@@ -71,12 +71,15 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       val flat = features.flatten
       val shaped = new Shape(Array(1L, timeSteps.toLong, featCount.toLong), "NTC")
       val input = new NDList(sub.create(flat, shaped))
-      val block = underlying.getBlock
-      val ps = new ai.djl.training.ParameterStore(ndm, false)
-      val result = block.forward(ps, input, false)
-      val arr = new Array[Float](result.head().size().toInt)
-      System.arraycopy(result.head().toFloatArray, 0, arr, 0, arr.length)
-      Try(arr)
+      // Use the model's internal parameter store (with loaded params) for forward pass
+      val trainer = underlying.newTrainer(new ai.djl.training.DefaultTrainingConfig(ai.djl.training.loss.Loss.l2Loss()))
+      try
+        trainer.initialize(new Shape(Array(1L, timeSteps.toLong, featCount.toLong), "NTC"))
+        val result = trainer.forward(input)
+        val arr = new Array[Float](result.head().size().toInt)
+        System.arraycopy(result.head().toFloatArray, 0, arr, 0, arr.length)
+        Try(arr)
+      finally trainer.close()
     finally sub.close()
 
   /** UNIFIED: train from float arrays. Works identically on both backends. */
