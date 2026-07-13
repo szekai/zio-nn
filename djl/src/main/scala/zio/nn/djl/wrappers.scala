@@ -62,6 +62,23 @@ class ZModel(val underlying: Model, ndm: NDManager, lossFn: LossFn, optimizerDef
       finally pred.close()
     finally sub.close()
 
+  /** RNN inference using raw NDArray forward pass — bypasses Predictor
+    * which requires TorchScript .pt export not supported for saved models.
+    */
+  def predictDirect(features: Array[Array[Float]], timeSteps: Int, featCount: Int): Try[Array[Float]] =
+    val sub = ndm.newSubManager()
+    try
+      val flat = features.flatten
+      val shaped = new Shape(Array(1L, timeSteps.toLong, featCount.toLong), "NTC")
+      val input = new NDList(sub.create(flat, shaped))
+      val block = underlying.getBlock
+      val ps = new ai.djl.training.ParameterStore(ndm, false)
+      val result = block.forward(ps, input, false)
+      val arr = new Array[Float](result.head().size().toInt)
+      System.arraycopy(result.head().toFloatArray, 0, arr, 0, arr.length)
+      Try(arr)
+    finally sub.close()
+
   /** UNIFIED: train from float arrays. Works identically on both backends. */
   def fit(features: Array[Array[Float]], labels: Array[Float], epochs: Int, lr: Float = LR_UNSPECIFIED): Try[FitResult] =
     Try {
