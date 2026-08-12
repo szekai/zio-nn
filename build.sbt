@@ -175,12 +175,16 @@ lazy val xgboost = project
     // Homebrew keg to the forked test JVM on macOS.
     if isMac then Test / envVars += "DYLD_LIBRARY_PATH" -> "/opt/homebrew/opt/libomp/lib" else Nil,
     libraryDependencies ++= Seq(
-      // intransitive: xgboost4j_2.12 drags scala-library 2.12 / scala-collection-compat /
-      // hadoop-hdfs transitives that conflict with the Scala 3 build. We only use its
-      // pure-Java API (ml.dmlc.xgboost4j.java.*) + bundled natives (lib/), so no
-      // transitives are needed. Kryo is added explicitly because Booster implements
-      // KryoSerializable and the compiler needs that interface on the classpath.
-      ("ml.dmlc" % "xgboost4j_2.12" % xgboostV).intransitive(),
+      // Explicit exclusions instead of intransitive(): sbt's intransitive() does not
+      // translate to Maven POM semantics, so consumers would inherit xgboost4j's
+      // scala-library 2.12 / scala-collection-compat / hadoop transitives. We only
+      // use xgboost4j's pure-Java API + bundled natives, so none are needed. Kryo is
+      // added because Booster implements KryoSerializable.
+      ("ml.dmlc" % "xgboost4j_2.12" % xgboostV)
+        .exclude("org.scala-lang.modules", "scala-collection-compat_2.12")
+        .exclude("org.apache.hadoop", "hadoop-hdfs")
+        .exclude("org.scala-lang", "scala-library")
+        .exclude("org.scala-lang", "scala-compiler"),
       "com.esotericsoftware" % "kryo"     % "5.6.0",
       "commons-logging"      % "commons-logging" % "1.2", // xgboost4j JNI loader requires it
       "dev.zio"          %% "zio"            % zioV,
