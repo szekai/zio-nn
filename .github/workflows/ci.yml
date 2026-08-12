@@ -21,6 +21,7 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: sbt/setup-sbt@v1
+      - run: sudo apt-get update && sudo apt-get install -y libgomp1   # xgboost4j linux native needs OpenMP
       - run: sbt test
 
   release:

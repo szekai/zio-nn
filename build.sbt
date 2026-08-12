@@ -160,10 +160,40 @@ lazy val storch = project
     )
   )
 
+// ── XGBoost backend: gradient-boosted trees via xgboost4j ──────────
+// (DJL's XGBoost engine is inference-only, so we use xgboost4j directly —
+// same native stack, plus real training.)
+val xgboostV = "3.0.4"
+
+lazy val xgboost = project
+  .in(file("xgboost"))
+  .dependsOn(core)
+  .settings(
+    name := "zio-nn-xgboost",
+    fork := true,
+    // xgboost4j's mac dylib links libomp (OpenMP) via @rpath — expose the
+    // Homebrew keg to the forked test JVM on macOS.
+    if isMac then Test / envVars += "DYLD_LIBRARY_PATH" -> "/opt/homebrew/opt/libomp/lib" else Nil,
+    libraryDependencies ++= Seq(
+      // intransitive: xgboost4j_2.12 drags scala-library 2.12 / scala-collection-compat /
+      // hadoop-hdfs transitives that conflict with the Scala 3 build. We only use its
+      // pure-Java API (ml.dmlc.xgboost4j.java.*) + bundled natives (lib/), so no
+      // transitives are needed. Kryo is added explicitly because Booster implements
+      // KryoSerializable and the compiler needs that interface on the classpath.
+      ("ml.dmlc" % "xgboost4j_2.12" % xgboostV).intransitive(),
+      "com.esotericsoftware" % "kryo"     % "5.6.0",
+      "commons-logging"      % "commons-logging" % "1.2", // xgboost4j JNI loader requires it
+      "dev.zio"          %% "zio"            % zioV,
+      "dev.zio"          %% "zio-streams"    % zioV,
+      "dev.zio"          %% "zio-test"       % zioV % Test,
+      "dev.zio"          %% "zio-test-sbt"   % zioV % Test
+    )
+  )
+
 // ── Root aggregate ─────────────────────────────────────
 lazy val root = project
   .in(file("."))
-  .aggregate(core, djl, dl4j, embeddings, vectordb, rag, examples, storch)
+  .aggregate(core, djl, dl4j, embeddings, vectordb, rag, examples, storch, xgboost)
   .settings(
     name := "zio-nn",
     publish / skip := true

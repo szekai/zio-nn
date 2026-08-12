@@ -37,6 +37,7 @@ model.close()
 | `zio-nn-dl4j-embeddings` | Word2Vec training (`SequenceVectors + SkipGram`), pre-trained vector loading, embedding-to-LayerSpec bridge |
 | `zio-nn-vectordb` | Vector store abstraction (`VectorStore` trait), `InMemoryVectorStore`, `PgvectorStore`, ZIO wrappers, egress pipeline (`predictAndStoreFlow`) |
 | `zio-nn-rag` | RAG pipeline — `Document`, `EmbeddingService`, `RAGService` (ingest/query/delete), `RAGAgentBridge` (LLM tool-call adapter) |
+| `zio-nn-xgboost` | Gradient-boosted trees via xgboost4j — `ZModel`, `Backend`, `zioApi` with the same train/predict/save/load contract. `Sequential(Dense/Output)` only (trees have no recurrence/conv) |
 
 ```scala
 // sbt — check latest release tag for version: https://github.com/szekai/zio-nn/releases
@@ -385,6 +386,32 @@ val arch = FunctionalDef(
 ```
 
 ---
+
+## Gradient Boosting (zio-nn-xgboost, v0.12.0)
+
+Tree-based models trained with **xgboost4j** (same native stack DJL wraps) —
+the canonical Qlib/LightGBM-style benchmark model family, complementary to the
+neural backends. Regression (`reg:squarederror`) with the same duck-typed
+contract, so the marketwise learn→promote→predict loop treats it like any model.
+
+```scala
+import zio.nn.xgboost.{ZModel, zioApi.*}
+import zio.nn.dsl.*
+
+// Trees honor input/output size only — hidden layers are structural markers
+val arch = Sequential(10)(Dense(16, ReLU), Output(1, MSE)).build   // 10 = flat window width
+
+val model = ZModel.create(arch).get
+model.fit(features, labels, epochs = 100, lr = 0.1f)               // Try[FitResult] (train MSE)
+model.predict(features)                                            // Try[Array[Float]]
+model.predictDirect(window2D, 5, 2)                                // RNN-shaped input flattened
+model.save(Path.of("models/my-xgb"))                               // model.json inside the dir
+val reloaded = ZModel.load(Path.of("models/my-xgb"))
+model.close()
+```
+
+Only `Sequential` architectures of `Dense`/`Output` layers are accepted
+(`Backend.compile` rejects LSTM/GRU/Conv/functional graphs at build time).
 
 ## Why Three Backends?
 
